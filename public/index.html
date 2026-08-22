@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/modules/speed-test/speed-test.css">
   <link rel="stylesheet" href="/modules/xiaoai-music/xiaoai-music.css">
+  <link rel="stylesheet" href="/modules/music-download/music-download.css">
 </head>
 <body>
   <div class="app-shell">
@@ -16,9 +17,8 @@
       <nav class="main-nav" aria-label="主要导航">
         <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
         <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
-        <button class="nav-item" data-view="links"><span data-icon="compass"></span><span>导航</span></button>
         <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
-        <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>小爱音乐</span></button>
+        <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
       </nav>
       <div class="sidebar-foot"><span class="status-dot"></span><span id="host-status">正在连接</span></div>
     </aside>
@@ -36,8 +36,8 @@
           <article class="metric-card"><div class="metric-icon violet"><span data-icon="memory"></span></div><div><span id="memory-label">内存</span><strong id="memory-value">--</strong><small id="memory-meta">正在读取</small></div></article>
           <div class="disk-metric-items" id="disk-list"><article class="metric-card"><div class="metric-icon coral"><span data-icon="database"></span></div><div><span>磁盘信息</span><strong>--</strong><small>正在读取</small></div></article></div>
         </div>
-        <div class="section-heading"><div><p class="eyebrow">快速访问</p><h2>常用入口</h2></div><button class="text-button" data-view-target="links">管理导航 <span data-icon="arrow"></span></button></div>
-        <div class="link-grid compact" id="home-links"></div>
+        <div class="section-heading"><div><p class="eyebrow">快速访问</p><h2>常用入口</h2></div><div class="quick-link-actions"><button class="text-button" id="sort-home-links" type="button">排序</button><button class="text-button" id="add-home-link" type="button"><span data-icon="plus"></span>新增</button></div></div>
+        <div class="quick-link-grid" id="home-links"></div>
       </section>
 
       <section class="page" id="files-view">
@@ -78,6 +78,11 @@
       </section>
 
       <section class="page" id="music-view">
+        <div class="music-module-tabs" role="tablist" aria-label="音乐功能">
+          <button class="active" type="button" role="tab" aria-selected="true" data-music-tab="player">小爱播放</button>
+          <button type="button" role="tab" aria-selected="false" data-music-tab="downloads">音乐下载</button>
+        </div>
+        <div class="music-module-panel" data-music-panel="player">
         <div class="music-toolbar">
           <label class="music-speaker-select"><span>音箱</span><select id="music-speaker"></select></label>
           <div class="music-status"><span class="status-dot" id="music-online-dot"></span><span id="music-status-text">正在连接</span></div>
@@ -93,13 +98,23 @@
         <div class="music-summary" id="music-summary"><span>曲库 -- 首</span><span>当前未播放</span></div>
         <section class="music-queue-panel" id="music-queue-panel" hidden><div class="music-list-heading"><strong>播放队列</strong><span id="music-queue-count"></span></div><div class="music-queue" id="music-queue"></div></section>
         <div class="music-results" id="music-results"><div class="empty-state">输入关键词搜索曲库</div></div>
+        </div>
+
+        <div class="music-module-panel" data-music-panel="downloads" hidden>
+        <div class="download-hero">
+          <div><p class="eyebrow light">MUSIC DOWNLOAD</p><h2>搜索并保存音乐</h2><p id="download-directory">默认保存到下载目录</p></div>
+          <span class="download-service-state" id="download-service-state">正在检查组件</span>
+        </div>
+        <form class="download-search" id="download-search-form"><input id="download-query" type="search" maxlength="100" required placeholder="输入歌曲名或歌手，例如：搁浅 周杰伦" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
+        <section class="download-section"><div class="download-section-heading"><div><h3>搜索结果</h3><span id="download-search-note">输入关键词开始搜索</span></div></div><div class="download-results" id="download-results"><div class="empty-state">暂时没有搜索结果</div></div></section>
+        <section class="download-section"><div class="download-section-heading"><div><h3>下载目录</h3><span id="download-library-note">正在读取</span></div><div class="download-heading-actions"><button class="secondary-button" id="download-destinations" type="button">目的地</button><button class="secondary-button" id="download-refresh" type="button">刷新</button></div></div><div class="download-player" id="download-player" hidden><div><strong id="download-player-title">正在试听</strong><button id="download-player-close" type="button" aria-label="关闭试听">×</button></div><audio id="download-player-audio" controls preload="metadata" crossorigin="use-credentials"></audio></div><div class="download-move-bar"><label><span>移动到</span><select id="download-move-root"></select></label><input id="download-move-path" maxlength="300" placeholder="可选多级子目录，例如：华语/周杰伦/专辑"><button class="primary-button" id="download-move" type="button" disabled>移动已选</button></div><div class="download-library" id="download-library"><div class="empty-state">下载目录为空</div></div></section>
+        </div>
       </section>
     </main>
 
     <nav class="bottom-nav" aria-label="移动端导航">
       <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
       <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
-      <button class="nav-item" data-view="links"><span data-icon="compass"></span><span>导航</span></button>
       <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
       <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
     </nav>
@@ -119,6 +134,7 @@
       <input type="hidden" id="link-id">
       <label>名称<input id="link-title" maxlength="40" required placeholder="例如：家庭相册"></label>
       <label>地址<input id="link-url" type="url" required placeholder="https://photo.example.com"></label>
+      <label>图标地址（可选）<input id="link-icon-url" type="url" maxlength="1000" placeholder="https://example.com/icon.png"></label>
       <label>说明<input id="link-description" maxlength="80" placeholder="一句话描述这个服务"></label>
       <label>备注（可选）<textarea id="link-notes" maxlength="2000" rows="6" placeholder="例如：部署位置、启动命令、维护提醒…"></textarea></label>
       <label>标识颜色<input id="link-color" type="color" value="#5b8def"></label>
@@ -149,9 +165,33 @@
     </form>
   </div>
 
+  <div class="modal-backdrop" id="download-metadata-modal" hidden>
+    <form class="form-panel download-metadata-panel" id="download-metadata-form">
+      <header><div><p class="eyebrow">AUDIO METADATA</p><h2>歌曲元信息</h2></div><button type="button" class="icon-button" data-download-metadata-close><span data-icon="close"></span></button></header>
+      <input id="download-metadata-file" type="hidden"><input id="download-metadata-token" type="hidden">
+      <div class="download-metadata-summary" id="download-metadata-summary">正在读取音频信息</div>
+      <div class="download-scrape-preview" id="download-scrape-preview" hidden><div class="download-scrape-title">选择一个刮削候选</div><div class="download-scrape-candidates" id="download-scrape-candidates"></div></div>
+      <label>歌曲名<input id="download-metadata-title" maxlength="200" required></label>
+      <label>歌手<input id="download-metadata-artist" maxlength="200"></label>
+      <label>专辑<input id="download-metadata-album" maxlength="200"></label>
+      <div class="download-metadata-fields"><label>年份<input id="download-metadata-date" maxlength="20"></label><label>流派<input id="download-metadata-genre" maxlength="80"></label><label>音轨号<input id="download-metadata-track" maxlength="20"></label></div>
+      <div class="form-actions"><button class="secondary-button" id="download-scrape" type="button">自动刮削</button><span class="form-spacer"></span><button type="button" class="secondary-button" data-download-metadata-close>取消</button><button class="primary-button" type="submit">写入文件</button></div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="download-destinations-modal" hidden>
+    <form class="form-panel" id="download-destinations-form">
+      <header><div><p class="eyebrow">MOVE DESTINATIONS</p><h2>移动目的地</h2></div><button type="button" class="icon-button" data-download-destinations-close><span data-icon="close"></span></button></header>
+      <label>目的地根目录（每行一个）<textarea id="download-destinations-value" rows="7" required placeholder="音乐:/vol3/media/music&#10;儿歌:/vol3/media/kids"></textarea></label>
+      <p class="download-config-hint">格式为“名称:绝对路径”。根目录需要已经存在；移动时填写的子目录或多级子目录会自动创建。</p>
+      <div class="form-actions"><button type="button" class="secondary-button" data-download-destinations-close>取消</button><button class="primary-button" type="submit">保存目的地</button></div>
+    </form>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="/app.js"></script>
   <script type="module" src="/modules/speed-test/speed-test.js"></script>
   <script type="module" src="/modules/xiaoai-music/xiaoai-music.js"></script>
+  <script type="module" src="/modules/music-download/music-download.js"></script>
 </body>
 </html>

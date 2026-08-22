@@ -9,11 +9,11 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { handleSpeedTest } from './modules/speed-test/index.mjs';
 import { XiaoAiMusicModule } from './modules/xiaoai-music/index.mjs';
+import { MusicDownloadModule } from './modules/music-download/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
 const dataDir = path.join(projectDir, 'data');
-const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
 
 // 仅在变量尚未由运行环境设置时读取项目根目录 .env。
 try {
@@ -81,6 +81,8 @@ function parseRoots() {
 }
 
 const roots = parseRoots();
+const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
+const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -254,10 +256,23 @@ function validateBookmark(input, existingId) {
   try { url = new URL(String(input.url || '').trim()); } catch { throw Object.assign(new Error('请输入有效地址'), { status: 400 }); }
   if (!['http:', 'https:'].includes(url.protocol)) throw Object.assign(new Error('地址仅支持 HTTP 或 HTTPS'), { status: 400 });
   if (!title) throw Object.assign(new Error('名称不能为空'), { status: 400 });
+  let iconUrl = '';
+  if (String(input.iconUrl || '').trim()) {
+    const rawIcon = String(input.iconUrl).trim();
+    if (rawIcon.startsWith('/') && !rawIcon.startsWith('//')) iconUrl = rawIcon.slice(0, 1000);
+    else {
+      try {
+        const parsedIcon = new URL(rawIcon);
+        if (!['http:', 'https:'].includes(parsedIcon.protocol)) throw new Error();
+        iconUrl = parsedIcon.href.slice(0, 1000);
+      } catch { throw Object.assign(new Error('图标地址仅支持站内路径或有效的 HTTP/HTTPS URL'), { status: 400 }); }
+    }
+  }
   return {
     id: existingId || crypto.randomUUID(), title, url: url.href,
     description: String(input.description || '').trim().slice(0, 80),
     notes: String(input.notes || '').trim().slice(0, 2000),
+    iconUrl,
     color: /^#[0-9a-f]{6}$/i.test(input.color) ? input.color : '#5b8def'
   };
 }
@@ -414,6 +429,7 @@ async function apiHandler(req, res, url) {
   url.pathname = url.pathname.replace(/\/+$/, '') || '/';
   if (await handleSpeedTest(req, res, url)) return;
   if (await xiaoAiMusic.handle(req, res, url)) return;
+  if (await musicDownload.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
   }
@@ -482,6 +498,17 @@ async function apiHandler(req, res, url) {
     const items = await readBookmarks();
     const item = validateBookmark(await readBody(req));
     items.push(item); await saveBookmarks(items); return json(res, 201, { item });
+  }
+  if (url.pathname === '/api/bookmarks/order' && req.method === 'PUT') {
+    const items = await readBookmarks();
+    const input = await readBody(req);
+    const ids = Array.isArray(input.ids) ? input.ids.map(String) : [];
+    if (ids.length !== items.length || new Set(ids).size !== items.length || items.some(item => !ids.includes(item.id))) {
+      throw Object.assign(new Error('导航排序数据与现有项目不一致'), { status: 400 });
+    }
+    const byId = new Map(items.map(item => [item.id, item]));
+    const ordered = ids.map(id => byId.get(id));
+    await saveBookmarks(ordered); return json(res, 200, { items: ordered });
   }
   const bookmarkMatch = url.pathname.match(/^\/api\/bookmarks\/([^/]+)$/);
   if (bookmarkMatch && ['PUT', 'DELETE'].includes(req.method)) {
@@ -555,6 +582,7 @@ async function requestHandler(req, res) {
 }
 
 await xiaoAiMusic.initialize();
+await musicDownload.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
   console.log(`文件入口：${roots.map(root => `${root.label} → ${root.path}`).join('，')}`);

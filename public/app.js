@@ -33,6 +33,68 @@ document.querySelectorAll('[data-icon]').forEach(node => {
 const state = { view: 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+const defaultNavOrder = ['home', 'files', 'speed', 'music'];
+function readNavOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('allinone-nav-order') || '[]');
+    return saved.length === defaultNavOrder.length && defaultNavOrder.every(view => saved.includes(view)) ? saved : defaultNavOrder;
+  } catch { return defaultNavOrder; }
+}
+let navOrder = readNavOrder();
+function applyNavOrder() {
+  ['.main-nav', '.bottom-nav'].forEach(selector => {
+    const container = $(selector); if (!container) return;
+    navOrder.forEach(view => { const item = container.querySelector(`[data-view="${view}"]`); if (item) container.append(item); });
+  });
+}
+function installNavSorting(container) {
+  let draggedView = '', active = false, timer = 0, startX = 0, startY = 0, suppressClick = false;
+  const finish = event => {
+    clearTimeout(timer);
+    if (active) {
+      container.querySelector(`[data-view="${draggedView}"]`)?.classList.remove('nav-dragging');
+      container.classList.remove('nav-sorting');
+      localStorage.setItem('allinone-nav-order', JSON.stringify(navOrder));
+      suppressClick = true; setTimeout(() => { suppressClick = false; }, 80);
+      if (event?.pointerId != null && container.hasPointerCapture?.(event.pointerId)) container.releasePointerCapture(event.pointerId);
+    }
+    draggedView = ''; active = false;
+  };
+  container.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    const item = event.target.closest('.nav-item[data-view]'); if (!item) return;
+    draggedView = item.dataset.view; startX = event.clientX; startY = event.clientY;
+    const activate = () => {
+      active = true; item.classList.add('nav-dragging'); container.classList.add('nav-sorting');
+      container.setPointerCapture?.(event.pointerId); navigator.vibrate?.(18);
+    };
+    if (event.pointerType === 'mouse') timer = setTimeout(activate, 120); else timer = setTimeout(activate, 300);
+  });
+  container.addEventListener('pointermove', event => {
+    if (!draggedView) return;
+    if (!active) {
+      const cancelDistance = event.pointerType === 'mouse' ? 9 : 18;
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > cancelDistance) { clearTimeout(timer); draggedView = ''; }
+      return;
+    }
+    event.preventDefault();
+    const items = [...container.querySelectorAll('.nav-item[data-view]')];
+    const target = items.reduce((nearest, item) => {
+      const rect = item.getBoundingClientRect(), distance = Math.abs(event.clientX - (rect.left + rect.width / 2));
+      return !nearest || distance < nearest.distance ? { item, distance } : nearest;
+    }, null)?.item;
+    if (!target || target.dataset.view === draggedView) return;
+    const from = navOrder.indexOf(draggedView), to = navOrder.indexOf(target.dataset.view);
+    if (from < 0 || to < 0) return;
+    navOrder.splice(from, 1); navOrder.splice(to, 0, draggedView); applyNavOrder();
+  });
+  container.addEventListener('pointerup', finish);
+  container.addEventListener('pointercancel', finish);
+  container.addEventListener('contextmenu', event => { if (event.target.closest('.nav-item[data-view]')) event.preventDefault(); });
+  container.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopImmediatePropagation(); } }, true);
+}
+applyNavOrder();
+$$('.main-nav,.bottom-nav').forEach(installNavSorting);
 // DevStudio 托管预览时跨域连接 Allinone 的反向代理地址
 const previewApiBases = {
   'devstudio.xuekai.top': 'https://aio.xuekai.top:8888'
@@ -82,13 +144,26 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : '小爱音乐';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : '音乐';
+}
+
+function switchMusicTab(tab) {
+  const selected = tab === 'downloads' ? 'downloads' : 'player';
+  $$('[data-music-tab]').forEach(node => {
+    const active = node.dataset.musicTab === selected;
+    node.classList.toggle('active', active);
+    node.setAttribute('aria-selected', String(active));
+  });
+  $$('[data-music-panel]').forEach(node => { node.hidden = node.dataset.musicPanel !== selected; });
+  localStorage.setItem('allinone-music-tab', selected);
 }
 
 function switchView(view) {
   state.view = view;
   $$('.page').forEach(node => node.classList.toggle('active', node.id === `${view}-view`));
   $$('.nav-item[data-view]').forEach(node => node.classList.toggle('active', node.dataset.view === view));
+  const mobileItem = $(`.bottom-nav .nav-item[data-view="${view}"]`);
+  if (mobileItem && getComputedStyle($('.bottom-nav')).display !== 'none') mobileItem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   setGreeting(); window.scrollTo({ top: 0, behavior: 'smooth' });
   if (view === 'home' && Date.now() - state.lastSystemUpdate > 60000) loadSystem();
   if (view === 'files' && !state.entries.length) loadFiles();
@@ -189,7 +264,7 @@ function closeModal(name) {
 
 function renderLinks() {
   const card = (item, editable) => `<a class="link-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener"><span class="link-symbol" style="background:${item.color}">${escapeHtml(item.title.slice(0,1).toUpperCase())}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description || new URL(item.url).host)}</p>${item.notes ? `<button class="link-note" data-note-link="${escapeHtml(item.id)}" aria-label="查看 ${escapeHtml(item.title)} 的备注" title="查看备注"><svg viewBox="0 0 24 24">${icons.info}</svg></button>` : ''}${editable ? `<button class="link-menu" data-edit-link="${escapeHtml(item.id)}" aria-label="编辑 ${escapeHtml(item.title)}"><svg viewBox="0 0 24 24">${icons.more}</svg></button>` : ''}</a>`;
-  $('#home-links').innerHTML = state.bookmarks.slice(0, 4).map(item => card(item, false)).join('') || '<div class="empty-state">还没有常用入口</div>';
+  $('#home-links').innerHTML = state.bookmarks.map(item => `<div class="quick-link-item" data-home-link-id="${escapeHtml(item.id)}"><a class="quick-link-open" href="${escapeHtml(item.url)}" target="_blank" rel="noopener"><span class="quick-link-icon" data-icon-fallback="${escapeHtml(item.title.slice(0,1).toUpperCase())}" style="background:${item.color}">${item.iconUrl ? `<img src="${escapeHtml(item.iconUrl)}" alt="">` : escapeHtml(item.title.slice(0,1).toUpperCase())}</span><span class="quick-link-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description || new URL(item.url).host)}</small></span></a><button class="quick-link-detail" data-edit-home-link="${escapeHtml(item.id)}" type="button" aria-label="修改 ${escapeHtml(item.title)}" title="详情与修改"><svg viewBox="0 0 24 24">${icons.more}</svg></button></div>`).join('') || '<div class="empty-state">还没有常用入口，点击“新增”创建</div>';
   $('#link-count').textContent = `${state.bookmarks.length} 个地址`;
   $('#link-grid').innerHTML = state.bookmarks.map(item => card(item, true)).join('') || '<div class="empty-state">点击“添加地址”，创建你的第一个入口</div>';
 }
@@ -200,8 +275,8 @@ async function loadLinks() {
 
 function openLinkForm(item) {
   $('#link-form').reset(); $('#link-id').value = item?.id || ''; $('#link-title').value = item?.title || ''; $('#link-url').value = item?.url || '';
-  $('#link-description').value = item?.description || ''; $('#link-notes').value = item?.notes || ''; $('#link-color').value = item?.color || '#5b8def'; $('#link-form-title').textContent = item ? '编辑地址' : '添加地址';
-  $('#delete-link').hidden = !item; $('#link-modal').hidden = false; document.body.style.overflow = 'hidden'; setTimeout(() => $('#link-title').focus(), 80);
+  $('#link-description').value = item?.description || ''; $('#link-notes').value = item?.notes || ''; $('#link-icon-url').value = item?.iconUrl || ''; $('#link-color').value = item?.color || '#5b8def'; $('#link-form-title').textContent = item ? '编辑地址' : '添加地址';
+  $('#delete-link').hidden = !item; $('#link-modal').hidden = false; document.body.style.overflow = 'hidden';
 }
 
 function openLinkNote(item) {
@@ -211,6 +286,7 @@ function openLinkNote(item) {
 
 async function initialize() {
   setGreeting();
+  switchMusicTab(localStorage.getItem('allinone-music-tab'));
   $('#hidden-mode').classList.toggle('active', state.showHidden);
   $('#hidden-mode').setAttribute('aria-pressed', String(state.showHidden));
   try {
@@ -222,7 +298,15 @@ async function initialize() {
 
 $$('[data-view]').forEach(node => node.addEventListener('click', () => switchView(node.dataset.view)));
 $$('[data-view-target]').forEach(node => node.addEventListener('click', () => switchView(node.dataset.viewTarget)));
-$('#refresh-button').addEventListener('click', () => state.view === 'home' ? loadSystem() : state.view === 'files' ? loadFiles() : state.view === 'links' ? loadLinks() : state.view === 'speed' ? $('#speed-start').click() : document.dispatchEvent(new CustomEvent('xiaoai:refresh')));
+$$('[data-music-tab]').forEach(node => node.addEventListener('click', () => switchMusicTab(node.dataset.musicTab)));
+$('#refresh-button').addEventListener('click', () => {
+  if (state.view === 'home') return loadSystem();
+  if (state.view === 'files') return loadFiles();
+  if (state.view === 'links') return loadLinks();
+  if (state.view === 'speed') return $('#speed-start').click();
+  const selectedTab = $('[data-music-tab].active')?.dataset.musicTab;
+  document.dispatchEvent(new CustomEvent(selectedTab === 'downloads' ? 'music-download:refresh' : 'xiaoai:refresh'));
+});
 $('#root-select').addEventListener('change', event => { state.root = event.target.value; state.path = ''; state.entries = []; loadFiles(''); });
 $('#breadcrumbs').addEventListener('click', event => { const button = event.target.closest('[data-path]'); if (button) loadFiles(button.dataset.path); });
 $('#favorite-current').addEventListener('click', async () => {
@@ -267,6 +351,7 @@ $('#hidden-mode').addEventListener('click', () => {
 $$('[data-close]').forEach(node => node.addEventListener('click', () => closeModal(node.dataset.close)));
 $$('.modal-backdrop').forEach(node => node.addEventListener('click', event => { if (event.target === node) closeModal(node.id.replace('-modal','')); }));
 $('#add-link').addEventListener('click', () => openLinkForm());
+$('#add-home-link').addEventListener('click', () => openLinkForm());
 $('#link-grid').addEventListener('click', event => {
   const noteButton = event.target.closest('[data-note-link]');
   if (noteButton) {
@@ -276,12 +361,63 @@ $('#link-grid').addEventListener('click', event => {
   openLinkForm(state.bookmarks.find(item => item.id === button.dataset.editLink));
 });
 $('#home-links').addEventListener('click', event => {
-  const noteButton = event.target.closest('[data-note-link]'); if (!noteButton) return;
-  event.preventDefault(); event.stopPropagation(); openLinkNote(state.bookmarks.find(link => link.id === noteButton.dataset.noteLink));
+  if (state.linkSorting) { event.preventDefault(); return; }
+  const detailButton = event.target.closest('[data-edit-home-link]'); if (!detailButton) return;
+  event.preventDefault(); event.stopPropagation(); openLinkForm(state.bookmarks.find(link => link.id === detailButton.dataset.editHomeLink));
 });
+
+let suppressQuickLinkClick = false;
+$('#home-links').addEventListener('click', event => {
+  if (suppressQuickLinkClick) { event.preventDefault(); event.stopImmediatePropagation(); }
+}, true);
+$('#home-links').addEventListener('error', event => {
+  if (!(event.target instanceof HTMLImageElement)) return;
+  const icon = event.target.closest('[data-icon-fallback]'); if (icon) icon.textContent = icon.dataset.iconFallback;
+}, true);
+async function saveQuickLinkOrder() {
+  const ids = [...$('#home-links').querySelectorAll('[data-home-link-id]')].map(item => item.dataset.homeLinkId);
+  state.bookmarks = ids.map(id => state.bookmarks.find(item => item.id === id)).filter(Boolean);
+  try { await request('/api/bookmarks/order', { method: 'PUT', body: JSON.stringify({ ids }) }); toast('导航顺序已保存'); }
+  catch (error) { toast(error.message); await loadLinks(); }
+}
+$('#sort-home-links').addEventListener('click', async () => {
+  state.linkSorting = !state.linkSorting;
+  $('#home-links').classList.toggle('sorting', state.linkSorting);
+  $('#sort-home-links').classList.toggle('active', state.linkSorting);
+  $('#sort-home-links').textContent = state.linkSorting ? '完成' : '排序';
+  if (!state.linkSorting) await saveQuickLinkOrder(); else toast('按住入口拖动排序');
+});
+let draggedQuickLink = null;
+$('#home-links').addEventListener('pointerdown', event => {
+  if (!state.linkSorting) return;
+  draggedQuickLink = event.target.closest('[data-home-link-id]'); if (!draggedQuickLink) return;
+  event.preventDefault(); draggedQuickLink.classList.add('dragging'); $('#home-links').setPointerCapture?.(event.pointerId);
+});
+$('#home-links').addEventListener('pointermove', event => {
+  if (!draggedQuickLink) return;
+  event.preventDefault();
+  const candidates = [...$('#home-links').querySelectorAll('[data-home-link-id]')].filter(item => item !== draggedQuickLink);
+  const target = candidates.reduce((nearest, item) => {
+    const rect = item.getBoundingClientRect();
+    const distance = Math.hypot(event.clientX - (rect.left + rect.width / 2), event.clientY - (rect.top + rect.height / 2));
+    return !nearest || distance < nearest.distance ? { item, distance } : nearest;
+  }, null)?.item;
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  const after = event.clientY > rect.top + rect.height / 2 || (Math.abs(event.clientY - (rect.top + rect.height / 2)) < rect.height / 2 && event.clientX > rect.left + rect.width / 2);
+  $('#home-links').insertBefore(draggedQuickLink, after ? target.nextSibling : target);
+});
+const finishQuickLinkDrag = async event => {
+  if (!draggedQuickLink) return;
+  draggedQuickLink.classList.remove('dragging'); draggedQuickLink = null;
+  if (event?.pointerId != null && $('#home-links').hasPointerCapture?.(event.pointerId)) $('#home-links').releasePointerCapture(event.pointerId);
+  suppressQuickLinkClick = true; setTimeout(() => { suppressQuickLinkClick = false; }, 100);
+};
+$('#home-links').addEventListener('pointerup', finishQuickLinkDrag);
+$('#home-links').addEventListener('pointercancel', finishQuickLinkDrag);
 $('#link-form').addEventListener('submit', async event => {
   event.preventDefault(); const id = $('#link-id').value;
-  const body = { title: $('#link-title').value, url: $('#link-url').value, description: $('#link-description').value, notes: $('#link-notes').value, color: $('#link-color').value };
+  const body = { title: $('#link-title').value, url: $('#link-url').value, iconUrl: $('#link-icon-url').value, description: $('#link-description').value, notes: $('#link-notes').value, color: $('#link-color').value };
   try {
     await request(id ? `/api/bookmarks/${encodeURIComponent(id)}` : '/api/bookmarks', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
     closeModal('link'); await loadLinks(); toast(id ? '地址已更新' : '地址已添加');

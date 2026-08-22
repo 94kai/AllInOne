@@ -1,0 +1,46 @@
+.download-hero { min-height: 138px; padding: 25px 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; color: #fff; border-radius: 24px; background: linear-gradient(125deg,#36475f,#596f91); box-shadow: 0 16px 38px rgba(38,58,88,.14); }
+.download-hero h2 { margin: 7px 0 5px; font-size: 27px; }
+.download-hero p:last-child { margin: 0; color: rgba(255,255,255,.7); font-size: 12px; overflow-wrap: anywhere; }
+.download-service-state { flex: none; padding: 8px 11px; border-radius: 10px; color: rgba(255,255,255,.88); background: rgba(255,255,255,.1); font-size: 11px; }
+.download-search { margin: 15px 0 24px; display: flex; gap: 9px; }
+.download-search input,.download-move-bar input,.download-move-bar select { min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 13px; background: #fff; outline: 0; font: inherit; }
+.download-search input { flex: 1; min-width: 0; }
+.download-search input:focus,.download-move-bar input:focus,.download-move-bar select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(91,141,239,.12); }
+.download-section { margin-top: 22px; }
+.download-section-heading { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: end; gap: 12px; }
+.download-section-heading h3 { margin: 0 0 3px; font-size: 18px; }
+.download-section-heading span { color: var(--muted); font-size: 11px; }
+.download-heading-actions { display: flex; gap: 7px; }
+.download-results,.download-library { display: grid; gap: 8px; }
+.download-song,.download-file { min-width: 0; min-height: 68px; padding: 11px 13px; display: grid; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.download-song { grid-template-columns: 74px minmax(0,1fr) auto; }
+.download-file { grid-template-columns: 28px minmax(0,1fr) auto; }
+.download-source { min-height: 34px; padding: 0 8px; display: grid; place-items: center; border-radius: 10px; color: #566d8e; background: #edf2f8; font-size: 10px; font-weight: 750; text-align: center; }
+.download-song-info,.download-file-info { min-width: 0; }
+.download-song strong,.download-file strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.download-song span,.download-file span { display: block; margin-top: 4px; overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+.download-song button[disabled] { opacity: .5; cursor: not-allowed; }
+.download-file input { width: 19px; height: 19px; }
+.download-file button { min-height: 38px; padding: 0 13px; }
+.download-file-actions { display: flex; gap: 6px; }.download-file-actions .danger { color: #c54f48; }
+.download-player { margin-bottom: 10px; padding: 11px 13px; border: 1px solid #d9e3ef; border-radius: 15px; background: #fff; }.download-player>div { margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }.download-player strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }.download-player button { width: 32px; height: 32px; border: 0; border-radius: 9px; color: var(--muted); background: #f0f3f6; font-size: 20px; }.download-player audio { width: 100%; height: 42px; display: block; }
+.download-job { padding: 9px 12px; display: flex; justify-content: space-between; gap: 12px; border-radius: 12px; color: #667589; background: #eef3f8; font-size: 11px; }
+.download-job.failed { color: #b34b45; background: #fff0ee; }
+.download-move-bar { margin-bottom: 10px; padding: 10px; display: grid; grid-template-columns: minmax(150px,220px) minmax(180px,1fr) auto; gap: 8px; background: #eaf0f8; border-radius: 15px; }
+.download-move-bar label { position: relative; }
+.download-move-bar label span { position: absolute; z-index: 1; top: 5px; left: 13px; color: #8792a0; font-size: 9px; }
+.download-move-bar select { width: 100%; padding-top: 11px; }
+.download-metadata-panel { width: min(620px,100%); }
+.download-config-hint { margin: 10px 22px 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.download-metadata-summary { margin: 15px 22px 0; padding: 11px 13px; color: #667589; background: #eef3f8; border-radius: 11px; font-size: 11px; }
+.download-metadata-fields { display: grid; grid-template-columns: repeat(3,1fr); }
+.download-metadata-fields label { margin-right: 0; }.download-metadata-fields label:last-child { margin-right: 22px; }
+.download-scrape-preview { margin: 12px 22px 0; padding: 10px; border: 1px solid #dbe4ef; border-radius: 13px; }
+.download-scrape-title { margin: 1px 2px 8px; color: #667589; font-size: 11px; font-weight: 700; }
+.download-scrape-candidates { max-height: 280px; display: grid; gap: 6px; overflow-y: auto; }
+.download-scrape-candidate { width: 100%; padding: 7px; display: flex; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 11px; color: inherit; background: #f5f7fa; text-align: left; cursor: pointer; }
+.download-scrape-candidate:hover,.download-scrape-candidate.selected { border-color: #aebfda; background: #edf3fc; }
+.download-scrape-preview img,.download-cover-empty { flex: none; width: 48px; height: 48px; border-radius: 8px; object-fit: cover; }
+.download-cover-empty { display: grid; place-items: center; color: #8b96a4; background: #edf1f5; font-size: 10px; }
+.download-scrape-info { min-width: 0; flex: 1; }.download-scrape-preview strong,.download-scrape-info>span,.download-scrape-preview small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.download-scrape-preview strong { font-size: 12px; }.download-scrape-info>span,.download-scrape-preview small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+@media(max-width:680px){.download-hero{min-height:150px;padding:22px;align-items:flex-start;flex-direction:column}.download-service-state{align-self:flex-start}.download-search{position:sticky;z-index:8;top:calc(62px + env(safe-area-inset-top));padding:6px 0;background:rgba(243,245,247,.94);backdrop-filter:blur(10px)}.download-search button{padding:0 15px}.download-song{grid-template-columns:64px minmax(0,1fr) auto}.download-source{min-height:32px;padding:0 5px}.download-song button{min-height:40px;padding:0 13px}.download-move-bar{grid-template-columns:1fr}.download-move-bar button{min-height:45px}.download-file{grid-template-columns:26px minmax(0,1fr)}.download-file-actions{grid-column:2;display:grid;grid-template-columns:repeat(3,1fr)}.download-file button{min-height:38px;padding:0 8px}.download-job{align-items:flex-start;flex-direction:column}.download-metadata-fields{grid-template-columns:1fr}.download-metadata-fields label,.download-metadata-fields label:last-child{margin-right:18px}.download-scrape-preview{margin-left:18px;margin-right:18px}}
