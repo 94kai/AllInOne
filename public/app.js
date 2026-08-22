@@ -82,10 +82,7 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  const hour = new Date().getHours();
-  const greeting = hour < 6 ? '夜深了' : hour < 11 ? '早上好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好';
-  $('#page-title').textContent = state.view === 'home' ? greeting : state.view === 'files' ? '文件空间' : state.view === 'links' ? '服务入口' : '网络测速';
-  $('#date-label').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : '网络测速';
 }
 
 function switchView(view) {
@@ -193,6 +190,7 @@ function closeModal(name) {
 function renderLinks() {
   const card = (item, editable) => `<a class="link-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener"><span class="link-symbol" style="background:${item.color}">${escapeHtml(item.title.slice(0,1).toUpperCase())}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description || new URL(item.url).host)}</p>${item.notes ? `<button class="link-note" data-note-link="${escapeHtml(item.id)}" aria-label="查看 ${escapeHtml(item.title)} 的备注" title="查看备注"><svg viewBox="0 0 24 24">${icons.info}</svg></button>` : ''}${editable ? `<button class="link-menu" data-edit-link="${escapeHtml(item.id)}" aria-label="编辑 ${escapeHtml(item.title)}"><svg viewBox="0 0 24 24">${icons.more}</svg></button>` : ''}</a>`;
   $('#home-links').innerHTML = state.bookmarks.slice(0, 4).map(item => card(item, false)).join('') || '<div class="empty-state">还没有常用入口</div>';
+  $('#link-count').textContent = `${state.bookmarks.length} 个地址`;
   $('#link-grid').innerHTML = state.bookmarks.map(item => card(item, true)).join('') || '<div class="empty-state">点击“添加地址”，创建你的第一个入口</div>';
 }
 

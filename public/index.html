@@ -23,16 +23,12 @@
 
     <main class="main-content">
       <header class="topbar">
-        <div><p class="eyebrow" id="date-label"></p><h1 id="page-title">晚上好</h1></div>
+        <h1 id="page-title">概览</h1>
         <button class="icon-button" id="refresh-button" aria-label="刷新当前页面" title="刷新"><span data-icon="refresh"></span></button>
       </header>
 
       <section class="page active" id="home-view">
-        <div class="hero-card">
-          <div><p class="eyebrow light">YOUR PRIVATE CLOUD</p><h2>欢迎回来</h2><p>文件、服务和常用入口，都在这里。</p></div>
-          <div class="hero-orbit"><div class="hero-core"><span data-icon="server"></span></div></div>
-        </div>
-        <div class="section-heading"><div><p class="eyebrow">系统状态</p><h2>此刻运行</h2></div><span class="section-note" id="monitor-note">进入页面时更新</span></div>
+        <div class="section-heading first-section"><div><p class="eyebrow">系统状态</p><h2>运行状态</h2></div><span class="section-note" id="monitor-note">进入页面时更新</span></div>
         <div class="metric-grid" id="metric-grid">
           <article class="metric-card"><div class="metric-icon blue"><span data-icon="cpu"></span></div><div class="metric-content"><span>处理器</span><div class="metric-value-line"><strong id="cpu-value">--</strong><em class="temp-chip" id="cpu-temperature">--°</em></div><small id="cpu-meta">按需采样</small></div></article>
           <article class="metric-card"><div class="metric-icon violet"><span data-icon="memory"></span></div><div><span id="memory-label">内存</span><strong id="memory-value">--</strong><small id="memory-meta">正在读取</small></div></article>
@@ -62,7 +58,7 @@
       </section>
 
       <section class="page" id="links-view">
-        <div class="links-intro"><div><p class="eyebrow">SERVICE DIRECTORY</p><h2>地址导航</h2><p>把 NAS 服务、家庭设备和常用站点收进一个入口。</p></div><button class="primary-button" id="add-link"><span data-icon="plus"></span>添加地址</button></div>
+        <div class="links-toolbar"><span class="muted" id="link-count">正在读取…</span><button class="primary-button" id="add-link"><span data-icon="plus"></span>添加地址</button></div>
         <div class="link-grid" id="link-grid"></div>
       </section>
 
