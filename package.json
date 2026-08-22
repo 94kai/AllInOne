@@ -1,0 +1,17 @@
+{
+  "name": "allinone",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "面向个人 NAS 的统一入口与文件工作台",
+  "scripts": {
+    "start": "node server.mjs",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart allinone",
+    "pm2:stop": "pm2 stop allinone",
+    "pm2:logs": "pm2 logs allinone"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
