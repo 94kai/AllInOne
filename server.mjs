@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { handleSpeedTest } from './modules/speed-test/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
@@ -47,6 +48,19 @@ const mimeTypes = {
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.wav': 'audio/wav',
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime'
 };
+
+const textExtensions = new Set([
+  '.txt', '.md', '.markdown', '.json', '.jsonc', '.json5', '.ndjson', '.yaml', '.yml', '.toml', '.xml', '.csv', '.tsv',
+  '.log', '.ini', '.conf', '.cfg', '.properties', '.env', '.html', '.htm', '.css', '.scss', '.sass', '.less',
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.py', '.pyw', '.rb', '.php', '.java', '.kt', '.kts',
+  '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.cs', '.go', '.rs', '.swift', '.dart', '.lua', '.pl', '.r', '.sql',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.graphql', '.gql', '.proto', '.diff', '.patch', '.srt', '.vtt'
+]);
+const textFileNames = new Set([
+  'dockerfile', 'composefile', 'makefile', 'rakefile', 'gemfile', 'procfile', 'license', 'readme', 'changelog',
+  '.env', '.gitignore', '.gitattributes', '.gitmodules', '.editorconfig', '.npmrc', '.yarnrc', '.dockerignore',
+  '.prettierignore', '.eslintignore', '.stylelintignore', 'hosts', 'crontab'
+]);
 
 const defaultBookmarks = [
   { id: 'allinone', title: 'All in One', url: 'http://127.0.0.1:2006/', description: '当前控制台', color: '#5b8def' },
@@ -183,7 +197,7 @@ function classify(name, isDirectory) {
   if (mime.startsWith('audio/')) return 'audio';
   if (mime.startsWith('video/')) return 'video';
   if (mime === 'application/pdf') return 'pdf';
-  if (mime.startsWith('text/') || ['.yaml', '.yml', '.xml', '.csv', '.log', '.ini', '.conf', '.sh', '.py', '.ts', '.tsx', '.jsx', '.vue'].includes(ext)) return 'text';
+  if (mime.startsWith('text/') || textExtensions.has(ext) || textFileNames.has(name.toLowerCase())) return 'text';
   if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(ext)) return 'archive';
   return 'file';
 }
@@ -241,6 +255,7 @@ function validateBookmark(input, existingId) {
   return {
     id: existingId || crypto.randomUUID(), title, url: url.href,
     description: String(input.description || '').trim().slice(0, 80),
+    notes: String(input.notes || '').trim().slice(0, 2000),
     color: /^#[0-9a-f]{6}$/i.test(input.color) ? input.color : '#5b8def'
   };
 }
@@ -290,15 +305,86 @@ async function systemSnapshot() {
   const after = cpuTimes();
   const delta = after.all - before.all;
   const cpu = delta > 0 ? Math.max(0, Math.min(100, (1 - (after.idle - before.idle) / delta) * 100)) : 0;
-  const disks = await Promise.all(roots.map(async root => {
+  const sensors = await temperatureSnapshot();
+  const [memory, disks] = await Promise.all([memorySnapshot(), diskSnapshots(sensors)]);
+  return { cpu: Number(cpu.toFixed(1)), cpuTemperature: sensors.cpu, cores: os.cpus().length, memory, disks, uptime: os.uptime(), hostname: os.hostname(), platform: os.platform() };
+}
+
+async function temperatureSnapshot() {
+  const result = { cpu: null, nvme: null };
+  if (process.platform !== 'linux') return result;
+  try {
+    const { stdout } = await execFileAsync('sensors', ['-j'], { timeout: 1500, maxBuffer: 256 * 1024 });
+    const sensors = JSON.parse(stdout);
+    const cpu = Object.entries(sensors).find(([name]) => name.startsWith('coretemp'))?.[1];
+    const cpuValue = cpu?.['Package id 0']?.temp1_input;
+    const nvme = Object.entries(sensors).find(([name]) => name.startsWith('nvme-'))?.[1];
+    const nvmeValue = nvme?.Composite?.temp1_input;
+    if (Number.isFinite(cpuValue)) result.cpu = Number(cpuValue.toFixed(1));
+    if (Number.isFinite(nvmeValue)) result.nvme = Number(nvmeValue.toFixed(1));
+  } catch {
+    // 温度传感器不可用时保持 null，不伪造数据。
+  }
+  return result;
+}
+
+async function smartTemperature(devicePath) {
+  try {
+    const smartctlPath = process.env.SMARTCTL_PATH || '/usr/sbin/smartctl';
+    const { stdout } = await execFileAsync(smartctlPath, ['-A', '-j', devicePath], { timeout: 2500, maxBuffer: 512 * 1024 });
+    const data = JSON.parse(stdout);
+    const direct = data.temperature?.current;
+    if (Number.isFinite(direct)) return direct;
+    const attribute = data.ata_smart_attributes?.table?.find(item => [190, 194].includes(item.id));
+    return Number.isFinite(attribute?.raw?.value) ? attribute.raw.value : null;
+  } catch { return null; }
+}
+
+async function diskSnapshots(sensors = {}) {
+  if (process.platform === 'linux') {
+    try {
+      const [{ stdout: dfOutput }, { stdout: blockOutput }] = await Promise.all([
+        execFileAsync('df', ['-B1', '--output=source,target,size,used,avail,fstype'], { timeout: 2000, maxBuffer: 512 * 1024 }),
+        execFileAsync('lsblk', ['-J', '-b', '-o', 'NAME,PATH,TYPE,SIZE,MOUNTPOINTS,MODEL,TRAN,HOTPLUG'], { timeout: 2000, maxBuffer: 1024 * 1024 })
+      ]);
+      const mounted = dfOutput.trim().split('\n').slice(1).map(line => {
+        const fields = line.trim().split(/\s+/);
+        if (fields.length < 6) return null;
+        const [source, target, total, used, free, fsType] = fields;
+        return { source, target, total: Number(total), used: Number(used), free: Number(free), fsType };
+      }).filter(Boolean);
+      const usageByTarget = new Map(mounted.map(item => [item.target, item]));
+      const collectMounts = device => [...(device.mountpoints || []), ...(device.children || []).flatMap(collectMounts)]
+        .filter(target => target && target !== '/boot' && !target.startsWith('/boot/'));
+      const physical = await Promise.all(JSON.parse(blockOutput).blockdevices.filter(device => device.type === 'disk').map(async device => {
+        const mounts = [...new Set(collectMounts(device))];
+        const usage = mounts.map(target => usageByTarget.get(target)).filter(Boolean);
+        const used = usage.reduce((sum, item) => sum + item.used, 0);
+        const free = usage.reduce((sum, item) => sum + item.free, 0);
+        const external = device.tran === 'usb' || Number(device.hotplug) === 1;
+        const temperature = device.tran === 'nvme' ? sensors.nvme : await smartTemperature(device.path);
+        return {
+          source: device.path, target: mounts.join(' · '), mounts, model: String(device.model || '').trim() || device.name,
+          transport: device.tran || '', external, label: external ? '外置硬盘' : '内置硬盘',
+          total: Number(device.size), used, free, temperature
+        };
+      }));
+      const availablePhysical = physical.filter(disk => disk.mounts.length && Number.isFinite(disk.total) && disk.total > 0);
+      availablePhysical.sort((a, b) => Number(a.external) - Number(b.external) || b.total - a.total);
+      if (availablePhysical.length) return availablePhysical;
+    } catch {
+      // df 不可用时回退到文件入口所在的文件系统。
+    }
+  }
+  const snapshots = await Promise.all(roots.map(async root => {
     try {
       const info = await statfs(root.path);
       const total = info.blocks * info.bsize;
       const free = info.bavail * info.bsize;
-      return { id: root.id, label: root.label, total, free, used: total - free };
-    } catch { return { id: root.id, label: root.label, unavailable: true }; }
+      return { source: root.id, target: root.path, label: root.label, total, free, used: total - free };
+    } catch { return null; }
   }));
-  return { cpu: Number(cpu.toFixed(1)), cores: os.cpus().length, memory: await memorySnapshot(), disks, uptime: os.uptime(), hostname: os.hostname(), platform: os.platform() };
+  return [...new Map(snapshots.filter(Boolean).map(disk => [`${disk.total}:${disk.free}`, disk])).values()];
 }
 
 async function serveFile(req, res, target, mime, downloadName) {
@@ -324,6 +410,7 @@ async function serveFile(req, res, target, mime, downloadName) {
 async function apiHandler(req, res, url) {
   // 兼容反向代理或开发工具自动补充的尾部斜杠
   url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  if (await handleSpeedTest(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
   }
@@ -331,15 +418,18 @@ async function apiHandler(req, res, url) {
     const current = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
     const currentStat = await stat(current.target);
     if (!currentStat.isDirectory()) throw Object.assign(new Error('目标不是目录'), { status: 400 });
-    const entries = await readdir(current.target, { withFileTypes: true });
+    const allEntries = await readdir(current.target, { withFileTypes: true });
+    const showHidden = url.searchParams.get('hidden') === '1';
+    const hiddenCount = allEntries.filter(entry => entry.name.startsWith('.')).length;
+    const entries = showHidden ? allEntries : allEntries.filter(entry => !entry.name.startsWith('.'));
     const files = await Promise.all(entries.slice(0, 5000).map(async entry => {
       try {
         const info = await stat(path.join(current.target, entry.name));
-        return { name: entry.name, path: [current.relative, entry.name].filter(Boolean).join('/'), type: classify(entry.name, info.isDirectory()), size: info.size, modified: info.mtime.toISOString() };
+        return { name: entry.name, path: [current.relative, entry.name].filter(Boolean).join('/'), absolutePath: path.join(current.target, entry.name), type: classify(entry.name, info.isDirectory()), size: info.size, modified: info.mtime.toISOString() };
       } catch { return null; }
     }));
     files.sort((a, b) => (a?.type === 'folder' ? -1 : 1) - (b?.type === 'folder' ? -1 : 1) || a?.name.localeCompare(b?.name, 'zh-CN', { numeric: true }));
-    return json(res, 200, { path: current.relative, truncated: entries.length > 5000, entries: files.filter(Boolean) });
+    return json(res, 200, { path: current.relative, absolutePath: current.target, truncated: entries.length > 5000, hiddenCount, entries: files.filter(Boolean) });
   }
   if (url.pathname === '/api/file' && req.method === 'GET') {
     const file = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
@@ -350,7 +440,13 @@ async function apiHandler(req, res, url) {
     const file = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
     const info = await stat(file.target);
     if (info.size > textPreviewLimit) throw Object.assign(new Error(`文本超过预览上限（${Math.round(textPreviewLimit / 1024)} KB）`), { status: 413 });
-    return json(res, 200, { content: await readFile(file.target, 'utf8') });
+    const content = await readFile(file.target);
+    if (content.includes(0)) throw Object.assign(new Error('文件包含二进制数据，无法作为文本预览'), { status: 415 });
+    try {
+      return json(res, 200, { content: new TextDecoder('utf-8', { fatal: true }).decode(content) });
+    } catch {
+      throw Object.assign(new Error('文件不是有效的 UTF-8 文本'), { status: 415 });
+    }
   }
   if (url.pathname === '/api/system' && req.method === 'GET') return json(res, 200, await systemSnapshot());
   if (url.pathname === '/api/favorites' && req.method === 'GET') {

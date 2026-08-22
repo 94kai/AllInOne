@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f4f6f8">
   <title>Allinone</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/modules/speed-test/speed-test.css">
 </head>
 <body>
   <div class="app-shell">
@@ -15,6 +16,7 @@
         <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
         <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
         <button class="nav-item" data-view="links"><span data-icon="compass"></span><span>导航</span></button>
+        <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
       </nav>
       <div class="sidebar-foot"><span class="status-dot"></span><span id="host-status">正在连接</span></div>
     </aside>
@@ -32,9 +34,9 @@
         </div>
         <div class="section-heading"><div><p class="eyebrow">系统状态</p><h2>此刻运行</h2></div><span class="section-note" id="monitor-note">进入页面时更新</span></div>
         <div class="metric-grid" id="metric-grid">
-          <article class="metric-card"><div class="metric-icon blue"><span data-icon="cpu"></span></div><div><span>处理器</span><strong id="cpu-value">--</strong><small id="cpu-meta">按需采样</small></div></article>
+          <article class="metric-card"><div class="metric-icon blue"><span data-icon="cpu"></span></div><div class="metric-content"><span>处理器</span><div class="metric-value-line"><strong id="cpu-value">--</strong><em class="temp-chip" id="cpu-temperature">--°</em></div><small id="cpu-meta">按需采样</small></div></article>
           <article class="metric-card"><div class="metric-icon violet"><span data-icon="memory"></span></div><div><span id="memory-label">内存</span><strong id="memory-value">--</strong><small id="memory-meta">正在读取</small></div></article>
-          <article class="metric-card wide"><div class="metric-icon coral"><span data-icon="database"></span></div><div class="disk-summary"><span>存储空间</span><strong id="disk-value">--</strong><small id="disk-meta">正在读取</small><div class="progress"><i id="disk-progress"></i></div></div></article>
+          <article class="metric-card wide storage-card"><div class="metric-icon coral"><span data-icon="database"></span></div><div class="disk-summary"><span>存储空间</span><strong id="disk-value">--</strong><div class="disk-list" id="disk-list"><small>正在读取</small></div></div></article>
         </div>
         <div class="section-heading"><div><p class="eyebrow">快速访问</p><h2>常用入口</h2></div><button class="text-button" data-view-target="links">管理导航 <span data-icon="arrow"></span></button></div>
         <div class="link-grid compact" id="home-links"></div>
@@ -44,6 +46,7 @@
         <div class="file-toolbar">
           <label class="root-select"><span data-icon="database"></span><select id="root-select" aria-label="文件入口"></select><span data-icon="chevron"></span></label>
           <div class="view-actions">
+            <button class="icon-button" id="hidden-mode" aria-label="显示隐藏项" aria-pressed="false" title="显示隐藏项"><span data-icon="eye"></span></button>
             <button class="icon-button active" id="list-mode" aria-label="列表视图"><span data-icon="list"></span></button>
             <button class="icon-button" id="grid-mode" aria-label="网格视图"><span data-icon="grid"></span></button>
           </div>
@@ -54,7 +57,7 @@
           <button class="favorite-add" id="favorite-current"><span data-icon="plus"></span><span>收藏当前</span></button>
         </div>
         <div class="breadcrumbs" id="breadcrumbs" aria-label="当前路径"></div>
-        <div class="file-meta"><span id="file-count">正在读取…</span><span class="muted" id="file-hint">只读模式</span></div>
+        <div class="file-meta"><span id="file-count">正在读取…</span><span class="file-meta-actions"><button class="copy-current-path" id="copy-current-path" type="button" disabled><span data-icon="copy"></span><span>复制当前路径</span></button><span class="muted" id="file-hint">只读模式</span></span></div>
         <div class="file-list" id="file-list"></div>
       </section>
 
@@ -62,12 +65,26 @@
         <div class="links-intro"><div><p class="eyebrow">SERVICE DIRECTORY</p><h2>地址导航</h2><p>把 NAS 服务、家庭设备和常用站点收进一个入口。</p></div><button class="primary-button" id="add-link"><span data-icon="plus"></span>添加地址</button></div>
         <div class="link-grid" id="link-grid"></div>
       </section>
+
+      <section class="page" id="speed-view">
+        <div class="speed-hero">
+          <p class="eyebrow light">NETWORK SPEED</p><h2>网络测速</h2>
+          <p>测试当前设备与 Allinone 服务器之间的真实传输速度。</p>
+          <div class="speed-actions"><button class="primary-button" id="speed-start" type="button">开始测速</button><span class="speed-status" id="speed-status">准备就绪</span></div>
+        </div>
+        <div class="speed-results">
+          <article class="speed-result-card" id="speed-download-card"><div class="speed-result-icon"><span data-icon="download"></span></div><h3>下载速度</h3><strong id="speed-download-value">--</strong><small id="speed-download-detail">尚未测试</small></article>
+          <article class="speed-result-card" id="speed-upload-card"><div class="speed-result-icon upload"><span data-icon="download"></span></div><h3>上传速度</h3><strong id="speed-upload-value">--</strong><small id="speed-upload-detail">尚未测试</small></article>
+        </div>
+        <div class="speed-note">测速会产生约 6–90 MB 临时网络流量，测试数据仅在内存中生成并立即丢弃。结果反映浏览器到本服务器的链路速度，不代表公网宽带速度。</div>
+      </section>
     </main>
 
     <nav class="bottom-nav" aria-label="移动端导航">
       <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
       <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
       <button class="nav-item" data-view="links"><span data-icon="compass"></span><span>导航</span></button>
+      <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
     </nav>
   </div>
 
@@ -86,12 +103,21 @@
       <label>名称<input id="link-title" maxlength="40" required placeholder="例如：家庭相册"></label>
       <label>地址<input id="link-url" type="url" required placeholder="https://photo.example.com"></label>
       <label>说明<input id="link-description" maxlength="80" placeholder="一句话描述这个服务"></label>
+      <label>备注（可选）<textarea id="link-notes" maxlength="2000" rows="6" placeholder="例如：部署位置、启动命令、维护提醒…"></textarea></label>
       <label>标识颜色<input id="link-color" type="color" value="#5b8def"></label>
       <div class="form-actions"><button type="button" class="secondary-button danger" id="delete-link" hidden>删除</button><span class="form-spacer"></span><button type="button" class="secondary-button" data-close="link">取消</button><button class="primary-button" type="submit">保存地址</button></div>
     </form>
   </div>
 
+  <div class="modal-backdrop" id="note-modal" hidden>
+    <section class="note-panel" role="dialog" aria-modal="true" aria-labelledby="note-title">
+      <header><div><p class="eyebrow">SERVICE NOTE</p><h2 id="note-title">服务备注</h2></div><button type="button" class="icon-button" data-close="note"><span data-icon="close"></span></button></header>
+      <div class="note-body" id="note-body"></div>
+    </section>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/modules/speed-test/speed-test.js"></script>
 </body>
 </html>
