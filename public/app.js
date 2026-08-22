@@ -105,12 +105,12 @@ async function loadSystem() {
     const memoryPercent = data.memory.used / data.memory.total * 100;
     $('#memory-label').textContent = data.memory.source === 'pressure' ? '内存压力' : '内存占用';
     $('#memory-value').textContent = `${memoryPercent.toFixed(0)}%`; $('#memory-meta').textContent = `${formatBytes(data.memory.used)} / ${formatBytes(data.memory.total)}`;
-    $('#disk-value').textContent = data.disks.length ? `${data.disks.length} 块硬盘` : '不可用';
     $('#disk-list').innerHTML = data.disks.map(disk => {
       const percent = disk.total ? Math.max(0, Math.min(100, disk.used / disk.total * 100)) : 0;
       const temperature = disk.temperature == null ? '--°' : `${Math.round(disk.temperature)}°`;
-      return `<div class="disk-item"><div class="disk-line"><b>${escapeHtml(disk.label.replace('硬盘', ''))} · ${escapeHtml(disk.model || '')}</b><span class="disk-stats"><em class="temp-chip" title="${disk.temperature == null ? '暂无硬盘温度，需要 SMART 读取权限' : `硬盘 ${disk.temperature}°C`}">${temperature}</em><strong>${percent.toFixed(0)}%</strong></span></div><div class="progress"><i style="width:${percent}%"></i></div><div class="disk-foot"><small>${formatBytes(disk.used)} / ${formatBytes(disk.total)}</small><small>${escapeHtml(disk.target)}</small></div></div>`;
-    }).join('') || '<small>未读取到可用存储卷</small>';
+      const volumeName = disk.mounts?.find(mount => /^\/vol[^/]*$/.test(mount)) || disk.mounts?.[0] || disk.target || disk.label;
+      return `<article class="metric-card disk-metric-card"><div class="metric-icon coral"><svg viewBox="0 0 24 24">${icons.database}</svg></div><div><span title="${escapeHtml(volumeName)}">磁盘信息 · ${escapeHtml(volumeName)}</span><div class="metric-value-line"><strong>${percent.toFixed(0)}%</strong><em class="disk-temperature" title="${disk.temperature == null ? '暂无硬盘温度，需要 SMART 读取权限' : `硬盘 ${disk.temperature}°C`}">· ${temperature}</em></div><small>${formatBytes(disk.used)} / ${formatBytes(disk.total)}</small></div></article>`;
+    }).join('') || '<article class="metric-card"><div class="metric-icon coral"><svg viewBox="0 0 24 24">${icons.database}</svg></div><div><span>磁盘信息</span><strong>不可用</strong><small>未读取到存储卷</small></div></article>';
     $('#host-status').textContent = `${data.hostname} 在线`;
     $('#monitor-note').textContent = `更新于 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
   } catch (error) { $('#monitor-note').textContent = '读取失败，点击刷新重试'; toast(error.message); }

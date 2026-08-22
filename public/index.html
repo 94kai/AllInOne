@@ -36,7 +36,7 @@
         <div class="metric-grid" id="metric-grid">
           <article class="metric-card"><div class="metric-icon blue"><span data-icon="cpu"></span></div><div class="metric-content"><span>处理器</span><div class="metric-value-line"><strong id="cpu-value">--</strong><em class="temp-chip" id="cpu-temperature">--°</em></div><small id="cpu-meta">按需采样</small></div></article>
           <article class="metric-card"><div class="metric-icon violet"><span data-icon="memory"></span></div><div><span id="memory-label">内存</span><strong id="memory-value">--</strong><small id="memory-meta">正在读取</small></div></article>
-          <article class="metric-card wide storage-card"><div class="metric-icon coral"><span data-icon="database"></span></div><div class="disk-summary"><span>存储空间</span><strong id="disk-value">--</strong><div class="disk-list" id="disk-list"><small>正在读取</small></div></div></article>
+          <div class="disk-metric-items" id="disk-list"><article class="metric-card"><div class="metric-icon coral"><span data-icon="database"></span></div><div><span>磁盘信息</span><strong>--</strong><small>正在读取</small></div></article></div>
         </div>
         <div class="section-heading"><div><p class="eyebrow">快速访问</p><h2>常用入口</h2></div><button class="text-button" data-view-target="links">管理导航 <span data-icon="arrow"></span></button></div>
         <div class="link-grid compact" id="home-links"></div>
