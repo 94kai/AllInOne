@@ -7,6 +7,7 @@
   <title>Allinone</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/modules/speed-test/speed-test.css">
+  <link rel="stylesheet" href="/modules/xiaoai-music/xiaoai-music.css">
 </head>
 <body>
   <div class="app-shell">
@@ -17,6 +18,7 @@
         <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
         <button class="nav-item" data-view="links"><span data-icon="compass"></span><span>导航</span></button>
         <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
+        <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>小爱音乐</span></button>
       </nav>
       <div class="sidebar-foot"><span class="status-dot"></span><span id="host-status">正在连接</span></div>
     </aside>
@@ -74,6 +76,24 @@
         </div>
         <div class="speed-note">测速会产生约 6–90 MB 临时网络流量，测试数据仅在内存中生成并立即丢弃。结果反映浏览器到本服务器的链路速度，不代表公网宽带速度。</div>
       </section>
+
+      <section class="page" id="music-view">
+        <div class="music-toolbar">
+          <label class="music-speaker-select"><span>音箱</span><select id="music-speaker"></select></label>
+          <div class="music-status"><span class="status-dot" id="music-online-dot"></span><span id="music-status-text">正在连接</span></div>
+          <button class="secondary-button" id="music-settings" type="button">配置</button>
+        </div>
+        <form class="music-search" id="music-search-form"><input id="music-query" type="search" maxlength="100" placeholder="搜索歌名、歌手或专辑" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
+        <div class="music-actions">
+          <button class="secondary-button" id="music-random" type="button">随机播放</button>
+          <button class="secondary-button" id="music-stop" type="button">停止播放</button>
+          <button class="secondary-button" id="music-refresh-library" type="button">刷新曲库</button>
+          <button class="secondary-button" id="music-listener" type="button">关闭语音监听</button>
+        </div>
+        <div class="music-summary" id="music-summary"><span>曲库 -- 首</span><span>当前未播放</span></div>
+        <section class="music-queue-panel" id="music-queue-panel" hidden><div class="music-list-heading"><strong>播放队列</strong><span id="music-queue-count"></span></div><div class="music-queue" id="music-queue"></div></section>
+        <div class="music-results" id="music-results"><div class="empty-state">输入关键词搜索曲库</div></div>
+      </section>
     </main>
 
     <nav class="bottom-nav" aria-label="移动端导航">
@@ -81,6 +101,7 @@
       <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
       <button class="nav-item" data-view="links"><span data-icon="compass"></span><span>导航</span></button>
       <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
+      <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
     </nav>
   </div>
 
@@ -112,8 +133,25 @@
     </section>
   </div>
 
+  <div class="modal-backdrop" id="music-config-modal" hidden>
+    <form class="form-panel" id="music-config-form">
+      <header><div><p class="eyebrow">SPEAKER CONFIG</p><h2>音箱配置</h2></div><button type="button" class="icon-button" data-music-close><span data-icon="close"></span></button></header>
+      <label>显示名称<input id="music-config-name" maxlength="30" required></label>
+      <label>音乐目录（每行一个）<textarea id="music-config-dirs" rows="4" required></textarea></label>
+      <label>音箱访问音乐地址<input id="music-config-url" type="url" required></label>
+      <label>搜索/播放数量<input id="music-config-limit" type="number" min="1" max="100" required></label>
+      <label>自动刷新间隔（秒，0 为关闭）<input id="music-config-interval" type="number" min="0" required></label>
+      <label>播放关键词（每行一个）<textarea id="music-config-play-keywords" rows="2" required></textarea></label>
+      <label>停止关键词（每行一个）<textarea id="music-config-stop-keywords" rows="3" required></textarea></label>
+      <label>刷新关键词（每行一个）<textarea id="music-config-refresh-keywords" rows="2" required></textarea></label>
+      <label>随机播放关键词（每行一个）<textarea id="music-config-random-keywords" rows="2" required></textarea></label>
+      <div class="form-actions"><button type="button" class="secondary-button" data-music-close>取消</button><button class="primary-button" type="submit">保存并重启</button></div>
+    </form>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="/app.js"></script>
   <script type="module" src="/modules/speed-test/speed-test.js"></script>
+  <script type="module" src="/modules/xiaoai-music/xiaoai-music.js"></script>
 </body>
 </html>

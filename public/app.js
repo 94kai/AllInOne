@@ -82,7 +82,7 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : '网络测速';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : '小爱音乐';
 }
 
 function switchView(view) {
@@ -222,7 +222,7 @@ async function initialize() {
 
 $$('[data-view]').forEach(node => node.addEventListener('click', () => switchView(node.dataset.view)));
 $$('[data-view-target]').forEach(node => node.addEventListener('click', () => switchView(node.dataset.viewTarget)));
-$('#refresh-button').addEventListener('click', () => state.view === 'home' ? loadSystem() : state.view === 'files' ? loadFiles() : state.view === 'links' ? loadLinks() : $('#speed-start').click());
+$('#refresh-button').addEventListener('click', () => state.view === 'home' ? loadSystem() : state.view === 'files' ? loadFiles() : state.view === 'links' ? loadLinks() : state.view === 'speed' ? $('#speed-start').click() : document.dispatchEvent(new CustomEvent('xiaoai:refresh')));
 $('#root-select').addEventListener('change', event => { state.root = event.target.value; state.path = ''; state.entries = []; loadFiles(''); });
 $('#breadcrumbs').addEventListener('click', event => { const button = event.target.closest('[data-path]'); if (button) loadFiles(button.dataset.path); });
 $('#favorite-current').addEventListener('click', async () => {

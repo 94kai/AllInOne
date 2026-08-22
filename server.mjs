@@ -8,10 +8,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { handleSpeedTest } from './modules/speed-test/index.mjs';
+import { XiaoAiMusicModule } from './modules/xiaoai-music/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
 const dataDir = path.join(projectDir, 'data');
+const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
 
 // 仅在变量尚未由运行环境设置时读取项目根目录 .env。
 try {
@@ -411,6 +413,7 @@ async function apiHandler(req, res, url) {
   // 兼容反向代理或开发工具自动补充的尾部斜杠
   url.pathname = url.pathname.replace(/\/+$/, '') || '/';
   if (await handleSpeedTest(req, res, url)) return;
+  if (await xiaoAiMusic.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
   }
@@ -551,7 +554,19 @@ async function requestHandler(req, res) {
   }
 }
 
-http.createServer(requestHandler).listen(port, host, () => {
+await xiaoAiMusic.initialize();
+const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
   console.log(`文件入口：${roots.map(root => `${root.label} → ${root.path}`).join('，')}`);
 });
+
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  httpServer.close();
+  await xiaoAiMusic.shutdown();
+  process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

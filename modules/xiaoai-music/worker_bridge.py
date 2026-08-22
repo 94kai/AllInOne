@@ -1,0 +1,201 @@
+"""将现有 open-xiaoai 设备驱动接入 Allinone 管理接口。"""
+import argparse
+import asyncio
+import json
+import os
+import signal
+import sys
+import threading
+import types
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+
+def load_config(path):
+    with open(path, "r", encoding="utf-8") as file_obj:
+        return json.load(file_obj)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--config", required=True)
+args = parser.parse_args()
+PROFILE = load_config(args.config)
+
+# 音乐核心和小爱协议实现均来自当前模块，不依赖外部项目目录。
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "runtime"))
+os.environ["XIAOAI_WS_PORT"] = str(PROFILE["ws_port"])
+config_module = types.ModuleType("config")
+config_module.MUSIC_CONFIG = PROFILE["music"]
+sys.modules["config"] = config_module
+
+import open_xiaoai_server  # noqa: E402
+from main import App, on_event_callback  # noqa: E402
+
+
+class Runtime:
+    loop = None
+    listener_task = None
+    api_server = None
+    stopping = False
+
+    @classmethod
+    async def set_listener(cls, enabled):
+        if enabled:
+            if cls.listener_task and not cls.listener_task.done():
+                return
+            open_xiaoai_server.register_fn("on_event", on_event_callback)
+            cls.listener_task = open_xiaoai_server.start_server()
+        elif cls.listener_task:
+            cls.listener_task.cancel()
+            try:
+                await cls.listener_task
+            except asyncio.CancelledError:
+                pass
+            cls.listener_task = None
+
+    @classmethod
+    def status(cls):
+        current = App.current_song
+        queue = []
+        if current:
+            queue.append({"name": current.name, "path": current.path, "durationSec": current.duration_sec, "current": True})
+        queue.extend({"name": song.name, "path": song.path, "durationSec": song.duration_sec, "current": False} for song in App.play_queue[:99])
+        return {
+            "id": PROFILE["id"],
+            "name": PROFILE["name"],
+            "listenerEnabled": bool(cls.listener_task and not cls.listener_task.done()),
+            "speakerConnected": open_xiaoai_server.is_connected(),
+            "librarySize": App.searcher.index_size(),
+            "refreshing": App.index_refresh_lock.locked(),
+            "currentSong": current.name if current else None,
+            "queueSize": len(App.play_queue),
+            "queue": queue,
+            "wsPort": PROFILE["ws_port"],
+            "httpPort": PROFILE["music"]["http"]["port"],
+        }
+
+    @classmethod
+    def search(cls, keyword):
+        key = keyword.strip().lower()
+        if not key:
+            return []
+        with App.searcher._lock:
+            songs = App.searcher._songs[:]
+        result = []
+        for song in songs:
+            if key not in (song.name_lower, song.title_lower, song.artist_lower, song.album_lower) and not any(
+                key in value for value in (song.name_lower, song.title_lower, song.artist_lower, song.album_lower)
+            ):
+                continue
+            result.append({
+                "path": song.path,
+                "name": os.path.basename(song.path),
+                "title": song.title_lower,
+                "artist": song.artist_lower,
+                "album": song.album_lower,
+                "size": song.size,
+            })
+            if len(result) >= 100:
+                break
+        return result
+
+    @classmethod
+    async def play_path(cls, path):
+        with App.searcher._lock:
+            allowed = any(song.path == path for song in App.searcher._songs)
+        if not allowed:
+            raise ValueError("歌曲不在当前曲库索引中")
+        songs = await asyncio.to_thread(App._build_song_items, [path], App.music_server)
+        if not songs:
+            raise ValueError("无法读取歌曲时长")
+        await App.clear_queue(stop_device=True)
+        async with App.local_music_lock:
+            await App._start_song_unlocked(songs[0], trigger="网页播放")
+
+
+def run_async(coro, timeout=120):
+    future = asyncio.run_coroutine_threadsafe(coro, Runtime.loop)
+    return future.result(timeout=timeout)
+
+
+class ApiHandler(BaseHTTPRequestHandler):
+    def send_json(self, status, body):
+        payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def read_json(self):
+        size = int(self.headers.get("Content-Length", "0"))
+        if size > 64 * 1024:
+            raise ValueError("请求内容过大")
+        return json.loads(self.rfile.read(size) or b"{}")
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path == "/status":
+                return self.send_json(200, Runtime.status())
+            if parsed.path == "/search":
+                keyword = parse_qs(parsed.query).get("q", [""])[0]
+                return self.send_json(200, {"items": Runtime.search(keyword)})
+            self.send_json(404, {"error": "接口不存在"})
+        except Exception as exc:
+            self.send_json(500, {"error": str(exc)})
+
+    def do_POST(self):
+        try:
+            body = self.read_json()
+            if self.path == "/play":
+                run_async(Runtime.play_path(str(body.get("path", ""))))
+            elif self.path == "/play-search":
+                run_async(App.play_local_music_by_keyword(str(body.get("keyword", "")).strip()))
+            elif self.path == "/random":
+                run_async(App.play_random_music())
+            elif self.path == "/stop":
+                run_async(App.stop_music())
+            elif self.path == "/refresh":
+                total, cost_ms = run_async(App.refresh_music_index("网页刷新"), 600)
+                return self.send_json(200, {"success": True, "total": total, "costMs": cost_ms})
+            elif self.path == "/listener":
+                run_async(Runtime.set_listener(bool(body.get("enabled"))))
+            else:
+                return self.send_json(404, {"error": "接口不存在"})
+            self.send_json(200, {"success": True})
+        except ValueError as exc:
+            self.send_json(400, {"error": str(exc)})
+        except Exception as exc:
+            self.send_json(500, {"error": str(exc)})
+
+    def log_message(self, fmt, *args):
+        return
+
+
+async def main():
+    Runtime.loop = asyncio.get_running_loop()
+    App.loop = Runtime.loop
+    App._ensure_ffprobe_available()
+    from music_service import build_music_server
+    App.music_server = build_music_server(PROFILE["music"].get("http", {}))
+    App.music_server.start()
+    Runtime.api_server = ThreadingHTTPServer(("127.0.0.1", PROFILE["api_port"]), ApiHandler)
+    threading.Thread(target=Runtime.api_server.serve_forever, daemon=True).start()
+    await Runtime.set_listener(PROFILE.get("listener_enabled", True))
+    await App.refresh_music_index("启动刷新")
+    if App.refresh_interval_sec > 0:
+        App.index_refresh_task = asyncio.create_task(App.run_index_refresh_loop())
+    stop_event = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        Runtime.loop.add_signal_handler(sig, stop_event.set)
+    await stop_event.wait()
+    await Runtime.set_listener(False)
+    if App.index_refresh_task:
+        App.index_refresh_task.cancel()
+    Runtime.api_server.shutdown()
+    App.music_server.stop()
+
+
+asyncio.run(main())

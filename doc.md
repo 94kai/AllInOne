@@ -2,12 +2,13 @@
 
 ## 产品结构
 
-allinone 定位为 NAS 的统一轻量控制台，界面包含四个稳定入口：
+allinone 定位为 NAS 的统一轻量控制台，界面包含五个稳定入口：
 
 1. **概览**：查看按需系统快照与常用地址。
 2. **文件**：浏览被授权的文件根目录并预览内容。
 3. **导航**：维护其他 NAS 服务、家庭设备和常用站点。
 4. **测速**：按需测试浏览器与 Allinone 服务之间的上传、下载链路速度。
+5. **小爱音乐**：搜索本地曲库并控制两台小爱音箱的播放、监听和配置。
 
 后续的小工具和迁移进来的程序可以继续作为同级模块扩展，避免把所有功能塞进首页。
 
@@ -49,11 +50,16 @@ allinone/
 ├── modules/
 │   └── speed-test/
 │       └── index.mjs    # 测速接口、输入边界和流式传输
+│   └── xiaoai-music/
+│       ├── index.mjs    # 双实例配置、进程监管与 API 代理
+│       ├── worker_bridge.py # worker 生命周期与本地管理接口
+│       └── runtime/     # 曲库、播放服务、语音处理及纯 Python 小爱协议
 ├── public/
 │   ├── index.html        # 页面结构
 │   ├── styles.css        # 响应式视觉与移动端安全区
 │   └── app.js            # 页面状态、文件预览、导航管理
 │   └── modules/speed-test/ # 测速模块前端逻辑与局部样式
+│   └── modules/xiaoai-music/ # 小爱音乐控制台逻辑与局部样式
 ├── data/
 │   ├── bookmarks.json    # 首次修改导航后自动创建
 │   └── favorites.json    # 首次收藏目录后自动创建
@@ -74,6 +80,7 @@ allinone/
 | `FILE_ROOTS` | `Home:运行用户主目录` | 逗号分隔的 `名称:绝对路径` |
 | `TEXT_PREVIEW_LIMIT` | `524288` | 文本预览字节上限 |
 | `SMARTCTL_PATH` | `/usr/sbin/smartctl` | 硬盘 SMART 温度读取程序或受控包装脚本路径 |
+| `XIAOAI_PYTHON` | `python3` | 小爱音乐 worker 使用的 Python 3 可执行文件 |
 
 托管 Preview 来源为 `https://devstudio.xuekai.top:8888` 时，前端 API 基址为 `https://aio.xuekai.top:8888`。本地 Preview 端口为 `8787` 时，前端连接当前主机的 `2006` 端口；其他情况使用同源 API。服务端仅放行 `PREVIEW_ORIGINS` 中的精确来源及同主机的本地 `8787` Preview。
 
@@ -141,6 +148,33 @@ Linux CPU/NVMe 温度优先从 `sensors -j` 读取，SATA/USB 硬盘温度通过
 前端先测试下载、再测试上传，每一阶段通常持续约 4 秒并以 `MB/s` 实时显示估算值；用户可随时停止。单轮下载从 2 MB 预热数据开始，随后使用 8 MB 数据块；上传使用浏览器内存生成的 4 MB 随机数据块，避免压缩代理影响结果。完整测试约产生 6–90 MB 传输量。结果表示浏览器到当前 Allinone 服务（包括中间反向代理）的实际链路吞吐量，不等同于运营商公网测速；反向代理若启用了额外缓存、限速或缓冲也会影响结果。
 
 模块责任边界：后端位于 `modules/speed-test/`，仅负责生成/接收临时字节流；前端位于 `public/modules/speed-test/`，独立管理测速运行状态、取消控制与结果展示。模块无配置项、无持久化数据、无定时器或后台任务，也不读写其他模块状态。
+
+### 小爱音乐
+
+模块将原来的 `XiaoAiMusic`、`XiaoAiMusicForNew` 两份相同业务实例合并为一套管理层和两个设备 worker：
+
+| 实例 | WebSocket 监听 | 音乐 HTTP | 本地管理接口 |
+| --- | ---: | ---: | ---: |
+| 客厅音箱 | `4399` | `18080` | `127.0.0.1:18180` |
+| 卧室音箱 | `4400` | `18081` | `127.0.0.1:18181` |
+
+两个 worker 独立持有设备连接、播放队列、曲库索引和监听状态，一个实例故障不会阻止另一个实例或 Allinone 核心服务运行。管理接口只监听回环地址，浏览器不能直接访问；所有操作统一经过 Allinone 鉴权及 `/api/modules/xiaoai-music/...` 代理。
+
+公开接口：
+
+- `GET /api/modules/xiaoai-music/profiles`：两台音箱的在线、监听、曲库和播放状态，并返回当前歌曲及最多 99 首待播队列。
+- `PUT /api/modules/xiaoai-music/profiles/:id`：修改名称、音乐目录、音箱可访问的音乐地址、搜索数量、定时刷新间隔及播放/停止/刷新/随机播放语音关键词，并只重启目标 worker。
+- `GET /api/modules/xiaoai-music/profiles/:id/search?q=...`：搜索歌名、歌手、专辑和文件名，查询最多 100 字符。
+- `POST .../:id/play`：播放索引中的指定歌曲。
+- `POST .../:id/play-search`：按关键词生成播放队列。
+- `POST .../:id/random`：随机生成播放队列。
+- `POST .../:id/stop`：停止播放并清空队列。
+- `POST .../:id/refresh`：刷新目标实例曲库索引。
+- `POST .../:id/listener`：开启或关闭目标实例语音监听，状态持久化。
+
+模块配置保存在 `data/xiaoai-music/config.json`，两个索引分别保存在同目录的 `<profile-id>-index.json`；这些运行数据均被 Git 忽略。配置只接受 1–10 个绝对音乐目录及 HTTP/HTTPS 音乐地址。曲库索引、元数据读取、Range 音乐服务、播放队列、语音指令处理以及 open-xiaoai WebSocket/RPC 协议都位于 `modules/xiaoai-music/runtime/`，只依赖 Python 标准库和系统 `ffprobe`。监听端口由每个实例运行时配置，不再需要两份编译产物。原来的两个 PM2 应用已经移除，旧项目目录不再参与运行。
+
+Allinone 启动时创建并监管两个 worker，异常退出后 3 秒自动拉起。收到 `SIGINT`/`SIGTERM` 时先关闭两个 worker，释放 WebSocket、音乐 HTTP 和管理端口，再退出主进程；PM2 只需管理 `allinone` 一个应用。首次建立索引可能需要数分钟，管理接口和语音监听会先启动，状态中显示刷新进度；以后复用索引，只解析新增或变化的文件。
 
 ## 移动端设计
 

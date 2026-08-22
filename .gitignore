@@ -1,5 +1,8 @@
 node_modules/
+__pycache__/
+*.pyc
 .env
 .DS_Store
 data/bookmarks.json
 data/favorites.json
+data/xiaoai-music/
