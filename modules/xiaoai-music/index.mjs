@@ -27,7 +27,7 @@ export class XiaoAiMusicModule {
     this.libraryFile = path.join(this.dataDir, 'library.json');
     this.children = new Map();
     this.config = null;
-    this.library = { favorites: [], playlists: {} };
+    this.library = { favorites: [], playlists: {}, announcements: {} };
     this.shuttingDown = false;
   }
 
@@ -36,8 +36,12 @@ export class XiaoAiMusicModule {
     try { this.config = JSON.parse(await readFile(this.configFile, 'utf8')); }
     catch { this.config = { profiles: defaultProfiles.map(profile => this.normalizeProfile(profile)) }; }
     this.config = { profiles: (this.config.profiles || []).map(profile => this.normalizeProfile(profile, profile)) };
-    try { this.library = JSON.parse(await readFile(this.libraryFile, 'utf8')); } catch { this.library = { favorites: [], playlists: {} }; }
-    this.library = { favorites: Array.isArray(this.library.favorites) ? this.library.favorites : [], playlists: this.library.playlists && typeof this.library.playlists === 'object' ? this.library.playlists : {} };
+    try { this.library = JSON.parse(await readFile(this.libraryFile, 'utf8')); } catch { this.library = { favorites: [], playlists: {}, announcements: {} }; }
+    this.library = {
+      favorites: Array.isArray(this.library.favorites) ? this.library.favorites : [],
+      playlists: this.library.playlists && typeof this.library.playlists === 'object' ? this.library.playlists : {},
+      announcements: this.library.announcements && typeof this.library.announcements === 'object' ? this.library.announcements : {}
+    };
     await this.save();
     for (const profile of this.config.profiles) this.start(profile);
   }
@@ -99,6 +103,11 @@ export class XiaoAiMusicModule {
   playlist(profile) {
     if (!Array.isArray(this.library.playlists[profile.id])) this.library.playlists[profile.id] = [];
     return this.library.playlists[profile.id];
+  }
+
+  announcements(profile) {
+    if (!Array.isArray(this.library.announcements[profile.id])) this.library.announcements[profile.id] = [];
+    return this.library.announcements[profile.id];
   }
 
   normalizeSong(input, profile) {
@@ -180,7 +189,7 @@ export class XiaoAiMusicModule {
     }
     if (action === 'search' && req.method === 'GET') { json(res, 200, await this.worker(profile, `/search?q=${encodeURIComponent(String(url.searchParams.get('q') || '').slice(0, 100))}`)); return true; }
     if (action === 'collection' && req.method === 'GET') {
-      json(res, 200, { playlist: this.playlist(profile), favorites: this.library.favorites }); return true;
+      json(res, 200, { playlist: this.playlist(profile), favorites: this.library.favorites, announcements: this.announcements(profile) }); return true;
     }
     if (action === 'playlist' && req.method === 'POST') {
       const payload = await body(req); const target = this.playlist(profile);
@@ -215,6 +224,10 @@ export class XiaoAiMusicModule {
       const result = await this.worker(profile, '/queue/jump', { method: 'POST', body: JSON.stringify({ index: Number(payload.index) }) });
       json(res, 200, result); return true;
     }
+    if (action === 'announcements' && req.method === 'DELETE') {
+      this.announcements(profile).splice(0);
+      await this.saveLibrary(); json(res, 200, { announcements: [] }); return true;
+    }
     if (['play', 'play-search', 'random', 'stop', 'refresh', 'listener', 'volume', 'speak'].includes(action) && req.method === 'POST') {
       const payload = await body(req);
       if (['play', 'random'].includes(action)) payload.repeat = Math.max(1, Math.min(20, Number(payload.repeat) || 1));
@@ -225,6 +238,14 @@ export class XiaoAiMusicModule {
         payload.text = text;
       }
       const result = await this.worker(profile, `/${action}`, { method: 'POST', body: JSON.stringify(payload), timeout: action === 'refresh' ? 600000 : 120000 });
+      if (action === 'speak') {
+        const announcements = this.announcements(profile);
+        const duplicate = announcements.indexOf(payload.text);
+        if (duplicate >= 0) announcements.splice(duplicate, 1);
+        announcements.unshift(payload.text); announcements.splice(5);
+        await this.saveLibrary();
+        result.announcements = announcements;
+      }
       if (action === 'listener') { profile.listenerEnabled = Boolean(payload.enabled); await this.save(); }
       if (action === 'volume') { profile.volume = Math.max(0, Math.min(100, Number(payload.volume))); await this.save(); }
       json(res, 200, result); return true;

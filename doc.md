@@ -239,6 +239,8 @@ Lucky 或其他反向代理应转发到 `127.0.0.1:2006`，传递 `Host`、`X-Fo
 
 播放台提供“文字播报”输入区，发送目标跟随当前选择的音箱。播报复用 worker 与音箱的常驻 WebSocket，并调用音箱端 TTS 脚本直接朗读原文，不经过小爱问答或语义改写；音箱服务离线或设备尚未连接时，网页不会发送并会明确提示。
 
+每台音箱分别在 `data/xiaoai-music/library.json` 保存最近 5 条成功播报的文字。相同内容再次播报时移动到最前，不重复占用记录；文字播报面板支持点击历史内容立即快捷播报，也可以清空当前音箱的全部播报历史。
+
 播放台使用响应式家庭音乐控制台布局。桌面端将正在播放与曲库作为主区域，当前播放队列固定在右侧；窄屏和手机端将队列改为底部抽屉，通过播放器中的“播放队列”按钮打开。音箱使用可横向滚动的房间卡片切换，连接状态直接显示在卡片中。文字播报位于独立弹层，刷新曲库、语音监听和音箱配置作为播放器快捷操作，不再与曲库内容纵向等权堆叠。
 
 音乐页隐藏整站顶部的通用刷新按钮，曲库刷新仍使用播放器内的明确入口。当前尚未提供真实歌曲封面提取，因此播放器不展示无信息价值的统一占位封面，优先保持手机端紧凑布局；后续只有接入真实封面数据时才增加封面区域。
@@ -251,9 +253,10 @@ Lucky 或其他反向代理应转发到 `127.0.0.1:2006`，传递 `Host`、`X-Fo
 
 当前播放队列中的待播歌曲可以直接点击切换。切歌会取消当前歌曲计时，从目标歌曲立即开始播放，并保留目标歌曲之后的剩余队列；正在播放的第一项不可重复点击。
 
-- `GET /api/modules/xiaoai-music/profiles/:id/collection`：读取该音箱播放列表及模块喜欢列表。
+- `GET /api/modules/xiaoai-music/profiles/:id/collection`：读取该音箱播放列表、模块喜欢列表及当前音箱最近 5 条播报记录。
 - `POST /api/modules/xiaoai-music/profiles/:id/playlist`：追加歌曲或以 `mode=replace` 替换、清空持久播放列表。
 - `DELETE /api/modules/xiaoai-music/profiles/:id/playlist?path=...`：从持久播放列表移除歌曲。
 - `PUT /api/modules/xiaoai-music/profiles/:id/favorites`：添加或取消喜欢。
 - `POST /api/modules/xiaoai-music/profiles/:id/collection/play`：从列表指定位置开始连续播放，可通过 `repeat` 指定 1–20 次总播放轮数。
 - `POST /api/modules/xiaoai-music/profiles/:id/volume`：设置该音箱音量，范围 0–100。
+- `DELETE /api/modules/xiaoai-music/profiles/:id/announcements`：清空当前音箱的播报记录。

@@ -1,4 +1,4 @@
-const musicState = { profiles: [], selected: '', results: [], playlist: [], favorites: [], libraryTab: 'playlist' };
+const musicState = { profiles: [], selected: '', results: [], playlist: [], favorites: [], announcements: [], libraryTab: 'playlist' };
 const musicNode = id => document.getElementById(id);
 const musicApiBase = ({ 'devstudio.xuekai.top': 'https://aio.xuekai.top:8888' })[location.hostname]
   || (location.port === '8787' ? `${location.protocol}//${location.hostname}:2006` : '');
@@ -20,6 +20,7 @@ function isFavorite(song) { return musicState.favorites.some(item => item.path =
 function repeatStorageKey() { return `allinone-music-repeat:${musicState.selected || 'default'}`; }
 function storedMusicRepeat() { return Math.max(1, Math.min(20, Number(localStorage.getItem(repeatStorageKey())) || 1)); }
 function musicRepeat() { const input = musicNode('music-repeat'); const value = Math.max(1, Math.min(20, Number(input.value) || 1)); input.value = value; localStorage.setItem(repeatStorageKey(), String(value)); return value; }
+function renderSpeakHistory() { musicNode('music-clear-speak-history').hidden = musicState.announcements.length === 0; musicNode('music-speak-history').innerHTML = musicState.announcements.map((text, index) => `<button type="button" data-announcement-index="${index}"><span>${escapeMusic(text)}</span><em>播报</em></button>`).join('') || '<span>还没有播报记录</span>'; }
 
 function switchLibraryTab(tab) {
   musicState.libraryTab = ['playlist', 'search', 'favorites'].includes(tab) ? tab : 'playlist';
@@ -83,7 +84,7 @@ async function loadMusicProfiles(keepSelection = true) {
 
 async function loadMusicCollection() {
   if (!musicState.selected) return;
-  try { const data = await musicRequest(profileApi('collection')); musicState.playlist = data.playlist || []; musicState.favorites = data.favorites || []; renderCollections(); }
+  try { const data = await musicRequest(profileApi('collection')); musicState.playlist = data.playlist || []; musicState.favorites = data.favorites || []; musicState.announcements = data.announcements || []; renderCollections(); renderSpeakHistory(); }
   catch (error) { musicToast(error.message); }
 }
 
@@ -153,27 +154,33 @@ musicNode('music-runtime-queue-list').addEventListener('click', async event => {
   await musicAction('queue/jump', { index: Number(item.dataset.queueIndex) }, '已切换歌曲');
   musicNode('music-runtime-queue').classList.remove('open');
 });
-musicNode('music-open-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = false; setTimeout(() => musicNode('music-speak-text').focus(), 0); });
+musicNode('music-open-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = false; });
 musicNode('music-close-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = true; });
 musicNode('music-speak-sheet').addEventListener('click', event => { if (event.target === musicNode('music-speak-sheet')) musicNode('music-speak-sheet').hidden = true; });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') { musicNode('music-speak-sheet').hidden = true; musicNode('music-runtime-queue').classList.remove('open'); } });
 
-musicNode('music-speak-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const profile = selectedProfile(), text = musicNode('music-speak-text').value.trim();
+async function sendAnnouncement(text, closeAfter = false) {
+  const profile = selectedProfile(), button = musicNode('music-speak-submit');
+  if (button.disabled) return;
   if (!profile?.online) return musicToast('音箱服务当前离线');
   if (!profile.speakerConnected) return musicToast('当前音箱尚未连接');
   if (!text) return musicToast('请输入要播报的文字');
-  const button = musicNode('music-speak-submit');
   button.disabled = true; button.textContent = '发送中…';
   try {
-    await musicRequest(profileApi('speak'), { method: 'POST', body: JSON.stringify({ text }) });
-    musicNode('music-speak-text').value = '';
-    musicNode('music-speak-sheet').hidden = true;
+    const data = await musicRequest(profileApi('speak'), { method: 'POST', body: JSON.stringify({ text }) });
+    musicState.announcements = data.announcements || musicState.announcements; renderSpeakHistory();
+    if (closeAfter) { musicNode('music-speak-text').value = ''; musicNode('music-speak-sheet').hidden = true; }
     musicToast('文字已发送给音箱');
   } catch (error) { musicToast(error.message); }
-  finally { button.disabled = false; button.textContent = '发送播报'; }
+  finally { button.disabled = false; button.textContent = '发送给当前音箱'; }
+}
+
+musicNode('music-speak-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  await sendAnnouncement(musicNode('music-speak-text').value.trim(), true);
 });
+musicNode('music-speak-history').addEventListener('click', event => { const item = event.target.closest('[data-announcement-index]'); if (item) sendAnnouncement(musicState.announcements[Number(item.dataset.announcementIndex)]); });
+musicNode('music-clear-speak-history').addEventListener('click', async () => { try { const data = await musicRequest(profileApi('announcements'), { method: 'DELETE' }); musicState.announcements = data.announcements || []; renderSpeakHistory(); musicToast('播报记录已清空'); } catch (error) { musicToast(error.message); } });
 
 musicNode('music-settings').addEventListener('click', () => { const profile = selectedProfile(); musicNode('music-config-name').value = profile.name; musicNode('music-config-dirs').value = profile.musicDirs.join('\n'); musicNode('music-config-url').value = profile.baseUrl; musicNode('music-config-limit').value = profile.maxResults; musicNode('music-config-interval').value = profile.refreshInterval; musicNode('music-config-play-keywords').value = profile.playKeywords.join('\n'); musicNode('music-config-stop-keywords').value = profile.stopKeywords.join('\n'); musicNode('music-config-refresh-keywords').value = profile.refreshKeywords.join('\n'); musicNode('music-config-random-keywords').value = profile.randomKeywords.join('\n'); musicNode('music-config-modal').hidden = false; });
 document.querySelectorAll('[data-music-close]').forEach(node => node.addEventListener('click', () => { musicNode('music-config-modal').hidden = true; }));
