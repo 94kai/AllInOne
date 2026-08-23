@@ -170,8 +170,8 @@ export class XiaoAiMusicModule {
 
   async assistantProfiles() {
     return Promise.all(this.config.profiles.map(async profile => {
-      try { return { id: profile.id, name: profile.name, ...(await this.worker(profile, '/status', { timeout: 2500 })), online: true }; }
-      catch { return { id: profile.id, name: profile.name, online: false, speakerConnected: false }; }
+      try { return { id: profile.id, name: profile.name, volume: profile.volume ?? 30, ...(await this.worker(profile, '/status', { timeout: 2500 })), online: true }; }
+      catch { return { id: profile.id, name: profile.name, volume: profile.volume ?? 30, online: false, speakerConnected: false }; }
     }));
   }
 
@@ -182,6 +182,15 @@ export class XiaoAiMusicModule {
     const maxLength = mode === 'speak' ? 500 : 200;
     if (!value || value.length > maxLength) throw Object.assign(new Error(`内容长度必须为 1–${maxLength} 个字符`), { status: 400 });
     return this.worker(profile, mode === 'speak' ? '/speak' : '/ask', { method: 'POST', body: JSON.stringify({ text: value }), timeout: 30000 });
+  }
+
+  async assistantVolume(profileId, volume) {
+    const profile = this.profile(profileId);
+    if (!profile) throw Object.assign(new Error('音箱不存在'), { status: 404 });
+    const value = Math.max(0, Math.min(100, Number(volume)));
+    if (!Number.isFinite(value)) throw Object.assign(new Error('音量必须是 0–100 的数字'), { status: 400 });
+    const result = await this.worker(profile, '/volume', { method: 'POST', body: JSON.stringify({ volume: value }), timeout: 30000 });
+    profile.volume = value; await this.save(); return result;
   }
 
   async handle(req, res, url) {

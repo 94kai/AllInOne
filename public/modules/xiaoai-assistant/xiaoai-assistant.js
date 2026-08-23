@@ -18,6 +18,7 @@ const categoryIcons = { light: '☀', aircon: '❄', scene: '◇', custom: '✦'
 
 function renderXaSpeakers() {
   xaNode('xa-speakers').innerHTML = xaState.profiles.map(item => `<button class="${item.id === xaState.selected ? 'active' : ''}" type="button" data-xa-speaker="${xaEscape(item.id)}"><span class="status-dot${item.speakerConnected ? '' : ' offline'}"></span><span><strong>${xaEscape(item.name)}</strong><small>${item.speakerConnected ? '已连接' : item.online ? '等待连接' : '离线'}</small></span></button>`).join('') || '<span>未配置音箱</span>';
+  const volume = xaProfile()?.volume ?? 30; xaNode('xa-volume').value = volume; xaNode('xa-volume-value').value = volume;
 }
 function renderXaHistory() {
   const items = xaHistory(); xaNode('xa-clear-history').hidden = items.length === 0;
@@ -52,6 +53,13 @@ async function loadXaState() {
 
 document.querySelectorAll('[data-xa-mode]').forEach(node => node.addEventListener('click', () => setXaMode(node.dataset.xaMode)));
 xaNode('xa-speakers').addEventListener('click', event => { const item = event.target.closest('[data-xa-speaker]'); if (!item) return; xaState.selected = item.dataset.xaSpeaker; localStorage.setItem('allinone-xa-speaker', xaState.selected); renderXaSpeakers(); renderXaHistory(); });
+xaNode('xa-volume').addEventListener('input', event => { xaNode('xa-volume-value').value = event.target.value; });
+xaNode('xa-volume').addEventListener('change', async event => {
+  const profile = xaProfile(), volume = Number(event.target.value); if (!profile?.speakerConnected) return xaToast('所选音箱尚未连接');
+  event.target.disabled = true;
+  try { await xaRequest('/api/modules/xiaoai-assistant/volume', { method: 'POST', body: JSON.stringify({ profileId: xaState.selected, volume }) }); profile.volume = volume; xaToast(`音量已调到 ${volume}`); }
+  catch (error) { renderXaSpeakers(); xaToast(error.message); } finally { event.target.disabled = false; }
+});
 async function sendXaText(text, mode, clearAfter = false) {
   const profile = xaProfile(), button = xaNode('xa-send');
   if (button.disabled) return;

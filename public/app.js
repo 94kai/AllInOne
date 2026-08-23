@@ -150,6 +150,7 @@ function formatBytes(value) {
 function setGreeting() {
   $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
   $('#refresh-button').hidden = state.view === 'music';
+  document.body.classList.toggle('xiaoai-active', state.view === 'xiaoai');
 }
 
 function switchMusicTab(tab) {

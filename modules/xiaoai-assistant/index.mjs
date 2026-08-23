@@ -89,6 +89,11 @@ export class XiaoAiAssistantModule {
       await this.xiaoAiMusic.assistantCommand(String(input.profileId || ''), 'ask', command);
       json(res, 200, { success: true }); return true;
     }
+    if (url.pathname === `${apiPrefix}/volume` && req.method === 'POST') {
+      const input = await readBody(req);
+      const result = await this.xiaoAiMusic.assistantVolume(String(input.profileId || ''), input.volume);
+      json(res, 200, result); return true;
+    }
     if (url.pathname === `${apiPrefix}/controls` && req.method === 'POST') {
       if (this.state.controls.length >= 30) throw httpError('最多配置 30 个快捷控制');
       const control = this.normalizeControl(await readBody(req)); this.state.controls.push(control); await this.save(); json(res, 201, { control }); return true;

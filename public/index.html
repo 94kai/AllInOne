@@ -80,19 +80,20 @@
       </section>
 
       <section class="page" id="xiaoai-view">
+        <div class="xa-utility-bar"><div class="xa-utility-title"><span data-icon="assistant"></span><strong>小爱控制</strong></div><label class="xa-volume"><span>音量</span><input id="xa-volume" type="range" min="0" max="100" step="1" value="30"><output id="xa-volume-value">30</output></label></div>
         <section class="xa-device-bar">
-          <div class="xa-device-row"><div><p class="eyebrow">播放设备</p><h2>选择音箱</h2></div><div class="xa-speakers" id="xa-speakers" aria-label="选择音箱"></div></div>
+          <div class="xa-speakers" id="xa-speakers" aria-label="选择音箱"></div>
           <div class="xa-quick-heading"><strong>快捷设备</strong><button class="secondary-button" id="xa-add-control" type="button">＋ 添加</button></div>
           <div class="xa-controls" id="xa-controls"><div class="xa-empty"><span>还没有快捷设备，点击添加进行配置</span></div></div>
         </section>
         <div class="xa-layout">
           <section class="xa-compose-card">
-            <div class="xa-card-heading"><div><span>发送内容</span><strong>让小爱说出来</strong></div><div class="xa-mode" role="tablist"><button class="active" type="button" data-xa-mode="speak">语音播报</button><button type="button" data-xa-mode="ask">指令执行</button></div></div>
+            <div class="xa-mode" role="tablist"><button class="active" type="button" data-xa-mode="speak">语音播报</button><button type="button" data-xa-mode="ask">指令执行</button></div>
             <textarea id="xa-text" maxlength="500" rows="3" placeholder="例如：饭做好了，大家来吃饭吧"></textarea>
-            <div class="xa-compose-actions"><span id="xa-compose-hint">音箱会原样读出这段文字</span><button class="primary-button" id="xa-send" type="button">发送</button></div>
+            <div class="xa-compose-actions"><span id="xa-compose-hint" hidden></span><button class="primary-button" id="xa-send" type="button">发送</button></div>
           </section>
           <section class="xa-history-card">
-            <div class="xa-history-heading"><div><span>快速重播</span><strong>最近使用</strong></div><button id="xa-clear-history" type="button">清空</button></div>
+            <div class="xa-history-heading"><strong>最近使用</strong><button id="xa-clear-history" type="button">清空</button></div>
             <div class="xa-history" id="xa-history"><span>还没有历史记录</span></div>
           </section>
         </div>
