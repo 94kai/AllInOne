@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { handleSpeedTest } from './modules/speed-test/index.mjs';
 import { XiaoAiMusicModule } from './modules/xiaoai-music/index.mjs';
+import { XiaoAiAssistantModule } from './modules/xiaoai-assistant/index.mjs';
 import { MusicDownloadModule } from './modules/music-download/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +83,7 @@ function parseRoots() {
 
 const roots = parseRoots();
 const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
+const xiaoAiAssistant = new XiaoAiAssistantModule({ dataDir, xiaoAiMusic });
 const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
 
 function json(res, status, body) {
@@ -429,6 +431,7 @@ async function apiHandler(req, res, url) {
   url.pathname = url.pathname.replace(/\/+$/, '') || '/';
   if (await handleSpeedTest(req, res, url)) return;
   if (await xiaoAiMusic.handle(req, res, url)) return;
+  if (await xiaoAiAssistant.handle(req, res, url)) return;
   if (await musicDownload.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
@@ -582,6 +585,7 @@ async function requestHandler(req, res) {
 }
 
 await xiaoAiMusic.initialize();
+await xiaoAiAssistant.initialize();
 await musicDownload.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);

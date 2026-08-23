@@ -6,4 +6,5 @@ __pycache__/
 data/bookmarks.json
 data/favorites.json
 data/xiaoai-music/
+data/xiaoai-assistant/
 data/music-download/

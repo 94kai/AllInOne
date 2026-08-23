@@ -168,6 +168,22 @@ export class XiaoAiMusicModule {
 
   publicProfile(profile) { const { api_port, ws_port, ...safe } = profile; return safe; }
 
+  async assistantProfiles() {
+    return Promise.all(this.config.profiles.map(async profile => {
+      try { return { id: profile.id, name: profile.name, ...(await this.worker(profile, '/status', { timeout: 2500 })), online: true }; }
+      catch { return { id: profile.id, name: profile.name, online: false, speakerConnected: false }; }
+    }));
+  }
+
+  async assistantCommand(profileId, mode, text) {
+    const profile = this.profile(profileId);
+    if (!profile) throw Object.assign(new Error('音箱不存在'), { status: 404 });
+    const value = String(text || '').trim();
+    const maxLength = mode === 'speak' ? 500 : 200;
+    if (!value || value.length > maxLength) throw Object.assign(new Error(`内容长度必须为 1–${maxLength} 个字符`), { status: 400 });
+    return this.worker(profile, mode === 'speak' ? '/speak' : '/ask', { method: 'POST', body: JSON.stringify({ text: value }), timeout: 30000 });
+  }
+
   async handle(req, res, url) {
     const base = '/api/modules/xiaoai-music';
     if (!url.pathname.startsWith(base)) return false;

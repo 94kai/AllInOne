@@ -20,6 +20,7 @@ const icons = {
   file: '<path d="M6 2h8l5 5v15H6z"/><path d="M14 2v6h5"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 15-5-4-8 7"/>',
   audio: '<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+  assistant: '<path d="M7 5.5A3.5 3.5 0 0 1 10.5 2h3A3.5 3.5 0 0 1 17 5.5v5a5 5 0 0 1-10 0z"/><path d="M4 10.5a8 8 0 0 0 16 0M12 18.5V22M8.5 22h7"/>',
   video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/>',
   text: '<path d="M6 2h8l5 5v15H6zM14 2v6h5M9 13h6M9 17h6"/>',
   pdf: '<path d="M6 2h8l5 5v15H6zM14 2v6h5"/><path d="M8 17h2a2 2 0 0 0 0-4H8v6M13 13h1.5a2 2 0 0 1 0 4H13zM18 13h3M18 16h2"/>',
@@ -30,11 +31,13 @@ document.querySelectorAll('[data-icon]').forEach(node => {
   node.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[node.dataset.icon] || icons.file}</svg>`;
 });
 
+const allowedViews = ['home', 'files', 'speed', 'xiaoai', 'music'];
+const urlView = new URLSearchParams(location.search).get('view');
 const storedView = localStorage.getItem('allinone-active-view');
-const state = { view: ['home', 'files', 'speed', 'music'].includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
+const state = { view: allowedViews.includes(urlView) ? urlView : allowedViews.includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const defaultNavOrder = ['home', 'files', 'speed', 'music'];
+const defaultNavOrder = ['home', 'files', 'speed', 'xiaoai', 'music'];
 function readNavOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('allinone-nav-order') || '[]');
@@ -145,7 +148,7 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : '音乐';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
   $('#refresh-button').hidden = state.view === 'music';
 }
 
@@ -161,8 +164,10 @@ function switchMusicTab(tab) {
 }
 
 function switchView(view) {
+  if (!allowedViews.includes(view)) view = 'home';
   state.view = view;
   localStorage.setItem('allinone-active-view', view);
+  const nextUrl = new URL(location.href); nextUrl.searchParams.set('view', view); history.replaceState({ view }, '', nextUrl);
   $$('.page').forEach(node => node.classList.toggle('active', node.id === `${view}-view`));
   $$('.nav-item[data-view]').forEach(node => node.classList.toggle('active', node.dataset.view === view));
   const mobileItem = $(`.bottom-nav .nav-item[data-view="${view}"]`);
@@ -307,6 +312,7 @@ $('#refresh-button').addEventListener('click', () => {
   if (state.view === 'files') return loadFiles();
   if (state.view === 'links') return loadLinks();
   if (state.view === 'speed') return $('#speed-start').click();
+  if (state.view === 'xiaoai') return document.dispatchEvent(new CustomEvent('xiaoai-assistant:refresh'));
   const selectedTab = $('[data-music-tab].active')?.dataset.musicTab;
   document.dispatchEvent(new CustomEvent(selectedTab === 'downloads' ? 'music-download:refresh' : 'xiaoai:refresh'));
 });

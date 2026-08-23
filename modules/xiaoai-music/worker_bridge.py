@@ -227,6 +227,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if any(ord(char) < 32 and char not in "\n\r\t" for char in text):
                     raise ValueError("播报文字包含不支持的控制字符")
                 run_async(App._speak_text(text), 30)
+            elif self.path == "/ask":
+                text = str(body.get("text", "")).strip()
+                if not text:
+                    raise ValueError("请输入要执行的小爱指令")
+                if len(text) > 200:
+                    raise ValueError("小爱指令不能超过 200 个字符")
+                if any(ord(char) < 32 and char not in "\n\r\t" for char in text):
+                    raise ValueError("小爱指令包含不支持的控制字符")
+                run_async(App._ask_xiaoai(text), 30)
             else:
                 return self.send_json(404, {"error": "接口不存在"})
             self.send_json(200, {"success": True})

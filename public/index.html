@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/modules/speed-test/speed-test.css">
   <link rel="stylesheet" href="/modules/xiaoai-music/xiaoai-music.css">
+  <link rel="stylesheet" href="/modules/xiaoai-assistant/xiaoai-assistant.css">
   <link rel="stylesheet" href="/modules/music-download/music-download.css">
 </head>
 <body>
@@ -18,6 +19,7 @@
         <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
         <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
         <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
+        <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
         <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
       </nav>
       <div class="sidebar-foot"><span class="status-dot"></span><span id="host-status">正在连接</span></div>
@@ -77,6 +79,25 @@
         <div class="speed-note">测速会产生约 6–90 MB 临时网络流量，测试数据仅在内存中生成并立即丢弃。结果反映浏览器到本服务器的链路速度，不代表公网宽带速度。</div>
       </section>
 
+      <section class="page" id="xiaoai-view">
+        <section class="xa-device-bar">
+          <div class="xa-device-row"><div><p class="eyebrow">播放设备</p><h2>选择音箱</h2></div><div class="xa-speakers" id="xa-speakers" aria-label="选择音箱"></div></div>
+          <div class="xa-quick-heading"><strong>快捷设备</strong><button class="secondary-button" id="xa-add-control" type="button">＋ 添加</button></div>
+          <div class="xa-controls" id="xa-controls"><div class="xa-empty"><span>还没有快捷设备，点击添加进行配置</span></div></div>
+        </section>
+        <div class="xa-layout">
+          <section class="xa-compose-card">
+            <div class="xa-card-heading"><div><span>发送内容</span><strong>让小爱说出来</strong></div><div class="xa-mode" role="tablist"><button class="active" type="button" data-xa-mode="speak">语音播报</button><button type="button" data-xa-mode="ask">指令执行</button></div></div>
+            <textarea id="xa-text" maxlength="500" rows="3" placeholder="例如：饭做好了，大家来吃饭吧"></textarea>
+            <div class="xa-compose-actions"><span id="xa-compose-hint">音箱会原样读出这段文字</span><button class="primary-button" id="xa-send" type="button">发送</button></div>
+          </section>
+          <section class="xa-history-card">
+            <div class="xa-history-heading"><div><span>快速重播</span><strong>最近使用</strong></div><button id="xa-clear-history" type="button">清空</button></div>
+            <div class="xa-history" id="xa-history"><span>还没有历史记录</span></div>
+          </section>
+        </div>
+      </section>
+
       <section class="page" id="music-view">
         <div class="music-module-tabs" role="tablist" aria-label="音乐功能">
           <button class="active" type="button" role="tab" aria-selected="true" data-music-tab="player">小爱播放</button>
@@ -100,7 +121,7 @@
                   <button class="music-control-button" id="music-random" type="button">随便听听</button>
                 </div>
                 <div class="music-volume"><label for="music-volume"><span>音量</span><output id="music-volume-value">30</output></label><input id="music-volume" type="range" min="0" max="100" step="1" value="30"></div>
-                <div class="music-quick-actions"><button id="music-open-speak" type="button">文字播报</button><button id="music-open-queue" type="button">播放队列 <span id="music-queue-badge">0</span></button><button id="music-refresh-library" type="button">刷新曲库</button><button id="music-listener" type="button">关闭语音监听</button></div>
+                <div class="music-quick-actions"><button id="music-open-queue" type="button">播放队列 <span id="music-queue-badge">0</span></button><button id="music-refresh-library" type="button">刷新曲库</button><button id="music-listener" type="button">关闭语音监听</button></div>
               </section>
 
               <section class="music-library-card">
@@ -132,19 +153,6 @@
             </aside>
           </div>
 
-          <div class="music-sheet-backdrop" id="music-speak-sheet" hidden>
-            <form class="music-speak" id="music-speak-form">
-              <header><div><span>VOICE MESSAGE</span><strong>文字播报</strong></div><button id="music-close-speak" type="button" aria-label="关闭文字播报">×</button></header>
-              <p>当前内容将由所选音箱直接朗读，不经过语义改写。</p>
-              <textarea id="music-speak-text" maxlength="500" rows="5" required placeholder="例如：饭做好了，大家来吃饭吧"></textarea>
-              <small>最多 500 个字符</small>
-              <button class="primary-button" id="music-speak-submit" type="submit">发送给当前音箱</button>
-              <section class="music-speak-history">
-                <div><strong>最近播报</strong><button id="music-clear-speak-history" type="button">清空</button></div>
-                <div id="music-speak-history"><span>还没有播报记录</span></div>
-              </section>
-            </form>
-          </div>
         </div>
 
         <div class="music-module-panel" data-music-panel="downloads" hidden>
@@ -163,6 +171,7 @@
       <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
       <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
       <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
+      <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
       <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
     </nav>
   </div>
@@ -212,6 +221,24 @@
     </form>
   </div>
 
+  <div class="modal-backdrop" id="xa-control-modal" hidden>
+    <form class="form-panel xa-control-form" id="xa-control-form">
+      <header><div><p class="eyebrow">QUICK CONTROL</p><h2 id="xa-control-title">添加快捷控制</h2></div><button type="button" class="icon-button" data-xa-close><span data-icon="close"></span></button></header>
+      <input id="xa-control-id" type="hidden">
+      <label>名称<input id="xa-control-name" maxlength="30" required placeholder="例如：客厅灯"></label>
+      <label>类型<select id="xa-control-category"><option value="light">灯光</option><option value="aircon">空调</option><option value="scene">场景</option><option value="custom">其他</option></select></label>
+      <label>控制方式<select id="xa-control-mode"><option value="pair">开 / 关两个按钮</option><option value="action">单个执行按钮</option></select></label>
+      <div id="xa-pair-fields">
+        <div class="xa-form-grid"><label>开启按钮文字<input id="xa-control-on-label" maxlength="10" value="开启"></label><label>关闭按钮文字<input id="xa-control-off-label" maxlength="10" value="关闭"></label></div>
+        <label>开启指令<input id="xa-control-on-command" maxlength="200" placeholder="例如：打开客厅的灯"></label>
+        <label>关闭指令<input id="xa-control-off-command" maxlength="200" placeholder="例如：关闭客厅的灯"></label>
+      </div>
+      <div id="xa-action-fields" hidden><label>执行指令<input id="xa-control-command" maxlength="200" placeholder="例如：打开回家模式"></label></div>
+      <p class="xa-form-tip">这里填写的是发给小爱的自然语言。设备名称请与米家中的名称保持一致。</p>
+      <div class="form-actions"><button class="secondary-button danger" id="xa-delete-control" type="button" hidden>删除</button><span class="form-spacer"></span><button class="secondary-button" type="button" data-xa-close>取消</button><button class="primary-button" type="submit">保存</button></div>
+    </form>
+  </div>
+
   <div class="modal-backdrop" id="download-metadata-modal" hidden>
     <form class="form-panel download-metadata-panel" id="download-metadata-form">
       <header><div><p class="eyebrow">AUDIO METADATA</p><h2>歌曲元信息</h2></div><button type="button" class="icon-button" data-download-metadata-close><span data-icon="close"></span></button></header>
@@ -239,6 +266,7 @@
   <script type="module" src="/app.js"></script>
   <script type="module" src="/modules/speed-test/speed-test.js"></script>
   <script type="module" src="/modules/xiaoai-music/xiaoai-music.js"></script>
+  <script type="module" src="/modules/xiaoai-assistant/xiaoai-assistant.js"></script>
   <script type="module" src="/modules/music-download/music-download.js"></script>
 </body>
 </html>
