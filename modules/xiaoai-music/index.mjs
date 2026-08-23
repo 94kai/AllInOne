@@ -206,11 +206,19 @@ export class XiaoAiMusicModule {
       const start = Math.max(0, Math.min(source.length - 1, Number(payload.index) || 0));
       if (!source.length) throw Object.assign(new Error('列表为空'), { status: 400 });
       const ordered = source.slice(start);
-      const result = await this.worker(profile, '/queue/play', { method: 'POST', body: JSON.stringify({ paths: ordered.map(song => song.path) }) });
+      const repeat = Math.max(1, Math.min(20, Number(payload.repeat) || 1));
+      const result = await this.worker(profile, '/queue/play', { method: 'POST', body: JSON.stringify({ paths: ordered.map(song => song.path), repeat }) });
       json(res, 200, result); return true;
     }
-    if (['play', 'play-search', 'random', 'stop', 'refresh', 'listener', 'volume'].includes(action) && req.method === 'POST') {
+    if (['play', 'play-search', 'random', 'stop', 'refresh', 'listener', 'volume', 'speak'].includes(action) && req.method === 'POST') {
       const payload = await body(req);
+      if (['play', 'random'].includes(action)) payload.repeat = Math.max(1, Math.min(20, Number(payload.repeat) || 1));
+      if (action === 'speak') {
+        const text = String(payload.text || '').trim();
+        if (!text) throw Object.assign(new Error('请输入要播报的文字'), { status: 400 });
+        if (text.length > 500) throw Object.assign(new Error('播报文字不能超过 500 个字符'), { status: 400 });
+        payload.text = text;
+      }
       const result = await this.worker(profile, `/${action}`, { method: 'POST', body: JSON.stringify(payload), timeout: action === 'refresh' ? 600000 : 120000 });
       if (action === 'listener') { profile.listenerEnabled = Boolean(payload.enabled); await this.save(); }
       if (action === 'volume') { profile.volume = Math.max(0, Math.min(100, Number(payload.volume))); await this.save(); }

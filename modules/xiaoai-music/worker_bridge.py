@@ -108,7 +108,7 @@ class Runtime:
         return result
 
     @classmethod
-    async def play_path(cls, path):
+    async def play_path(cls, path, repeat=1):
         with App.searcher._lock:
             allowed = any(song.path == path for song in App.searcher._songs)
         if not allowed:
@@ -116,12 +116,16 @@ class Runtime:
         songs = await asyncio.to_thread(App._build_song_items, [path], App.music_server)
         if not songs:
             raise ValueError("无法读取歌曲时长")
+        repeat = max(1, min(20, int(repeat)))
+        songs *= repeat
         await App.clear_queue(stop_device=True)
         async with App.local_music_lock:
-            await App._start_song_unlocked(songs[0], trigger="网页播放")
+            App.play_queue = songs
+            first_song = App.play_queue.pop(0)
+            await App._start_song_unlocked(first_song, trigger="网页播放")
 
     @classmethod
-    async def play_paths(cls, paths):
+    async def play_paths(cls, paths, repeat=1):
         clean_paths = list(dict.fromkeys(str(item) for item in paths if str(item)))[:500]
         if not clean_paths:
             raise ValueError("播放列表不能为空")
@@ -132,6 +136,10 @@ class Runtime:
         songs = await asyncio.to_thread(App._build_song_items, clean_paths, App.music_server)
         if not songs:
             raise ValueError("播放列表中没有可播放的歌曲")
+        repeat = max(1, min(20, int(repeat)))
+        if len(songs) * repeat > 2000:
+            raise ValueError("循环后的播放队列不能超过 2000 首")
+        songs *= repeat
         await App.clear_queue(stop_device=True)
         async with App.local_music_lock:
             App.play_queue = songs
@@ -176,13 +184,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         try:
             body = self.read_json()
             if self.path == "/play":
-                run_async(Runtime.play_path(str(body.get("path", ""))))
+                run_async(Runtime.play_path(str(body.get("path", "")), body.get("repeat", 1)))
             elif self.path == "/queue/play":
-                run_async(Runtime.play_paths(body.get("paths", [])))
+                run_async(Runtime.play_paths(body.get("paths", []), body.get("repeat", 1)))
             elif self.path == "/play-search":
                 run_async(App.play_local_music_by_keyword(str(body.get("keyword", "")).strip()))
             elif self.path == "/random":
-                run_async(App.play_random_music())
+                run_async(App.play_random_music(body.get("repeat", 1)))
             elif self.path == "/stop":
                 run_async(App.stop_music())
             elif self.path == "/refresh":
@@ -194,6 +202,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                 volume = max(0, min(100, int(body.get("volume", 0))))
                 run_async(set_volume(volume))
                 return self.send_json(200, {"success": True, "volume": volume})
+            elif self.path == "/speak":
+                text = str(body.get("text", "")).strip()
+                if not text:
+                    raise ValueError("请输入要播报的文字")
+                if len(text) > 500:
+                    raise ValueError("播报文字不能超过 500 个字符")
+                if any(ord(char) < 32 and char not in "\n\r\t" for char in text):
+                    raise ValueError("播报文字包含不支持的控制字符")
+                run_async(App._speak_text(text), 30)
             else:
                 return self.send_json(404, {"error": "接口不存在"})
             self.send_json(200, {"success": True})

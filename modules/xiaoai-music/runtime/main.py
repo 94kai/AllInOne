@@ -620,7 +620,7 @@ class App:
             await cls._start_song_unlocked(first_song, trigger="搜索播放")
 
     @classmethod
-    async def play_random_music(cls):
+    async def play_random_music(cls, repeat: int = 1):
         if not cls.searcher.has_dirs():
             await cls._speak_text("本地音乐目录还没有配置")
             return
@@ -638,6 +638,8 @@ class App:
             await cls._speak_text("没有可播放的歌曲，无法解析音频时长")
             logger.warning("随机结果存在但无可播放歌曲")
             return
+        repeat = max(1, min(20, int(repeat)))
+        songs *= repeat
         cleared_count = await cls.clear_queue(stop_device=True)
         logger.info("随机选歌并替换队列: 命中=%d 清空旧队列=%d", count, cleared_count)
         cls._log_queue(songs)

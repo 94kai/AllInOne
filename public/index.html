@@ -93,14 +93,23 @@
           <div class="music-volume"><label for="music-volume">音量 <output id="music-volume-value">30</output></label><input id="music-volume" type="range" min="0" max="100" step="1" value="30"></div>
           <button class="secondary-button" id="music-stop" type="button">停止</button>
         </div>
-        <div class="music-actions"><button class="secondary-button" id="music-random" type="button">随便听听</button><button class="secondary-button" id="music-refresh-library" type="button">刷新曲库</button><button class="secondary-button" id="music-listener" type="button">关闭语音监听</button></div>
+        <div class="music-actions"><label class="music-repeat"><span>循环次数</span><input id="music-repeat" type="number" min="1" max="20" step="1" value="1" inputmode="numeric"><em>轮</em></label><button class="secondary-button" id="music-random" type="button">随便听听</button><button class="secondary-button" id="music-refresh-library" type="button">刷新曲库</button><button class="secondary-button" id="music-listener" type="button">关闭语音监听</button></div>
+        <form class="music-speak" id="music-speak-form">
+          <label for="music-speak-text">文字播报</label>
+          <div><textarea id="music-speak-text" maxlength="500" rows="2" required placeholder="输入要让当前音箱播报的内容"></textarea><button class="primary-button" id="music-speak-submit" type="submit">发送播报</button></div>
+          <small>内容将由当前选择的音箱直接读出，最多 500 个字符。</small>
+        </form>
+        <section class="music-queue-panel" id="music-runtime-queue" hidden>
+          <div class="music-list-heading"><strong>当前播放队列</strong><span id="music-runtime-queue-count">临时队列</span></div>
+          <div class="music-queue" id="music-runtime-queue-list"></div>
+        </section>
         <div class="music-library-tabs" role="tablist" aria-label="音乐资料库">
           <button class="active" type="button" data-library-tab="playlist">播放列表 <span id="music-playlist-count">0</span></button>
           <button type="button" data-library-tab="search">搜索歌曲</button>
           <button type="button" data-library-tab="favorites">我喜欢 <span id="music-favorites-count">0</span></button>
         </div>
         <section class="music-library-panel" data-library-panel="playlist">
-          <div class="music-list-toolbar"><div><strong>我的播放列表</strong><span>列表会自动保存</span></div><div><button class="secondary-button" id="music-play-all" type="button">播放全部</button><button class="secondary-button danger" id="music-clear-playlist" type="button">清空</button></div></div>
+          <div class="music-list-toolbar"><div><strong>保存的播放列表</strong><span>与上方当前播放队列相互独立，会自动保存</span></div><div><button class="secondary-button" id="music-play-all" type="button">播放全部</button><button class="secondary-button danger" id="music-clear-playlist" type="button">清空</button></div></div>
           <div class="music-track-list" id="music-playlist"><div class="empty-state">播放列表为空，去搜索歌曲添加吧</div></div>
         </section>
         <section class="music-library-panel" data-library-panel="search" hidden>

@@ -17,6 +17,7 @@ function escapeMusic(value) { return String(value ?? '').replace(/[&<>'"]/g, cha
 function formatMusicBytes(value) { return Number(value) >= 1073741824 ? `${(value / 1073741824).toFixed(1)} GB` : `${(Number(value) / 1048576).toFixed(1)} MB`; }
 function songTitle(song) { return song.title || song.name || song.path.split('/').pop(); }
 function isFavorite(song) { return musicState.favorites.some(item => item.path === song.path); }
+function musicRepeat() { const input = musicNode('music-repeat'); const value = Math.max(1, Math.min(20, Number(input.value) || 1)); input.value = value; return value; }
 
 function switchLibraryTab(tab) {
   musicState.libraryTab = ['playlist', 'search', 'favorites'].includes(tab) ? tab : 'playlist';
@@ -57,7 +58,11 @@ function renderMusicStatus() {
   musicNode('music-status-text').textContent = profile.online ? `${profile.speakerConnected ? '音箱已连接' : '等待音箱连接'}${profile.listenerEnabled ? '' : ' · 语音监听已关闭'} · WS ${profile.wsPort}` : `离线 · ${profile.processError || '服务未启动'}`;
   musicNode('music-listener').textContent = profile.listenerEnabled ? '关闭语音监听' : '开启语音监听';
   musicNode('music-current-song').textContent = profile.currentSong || '当前未播放';
-  musicNode('music-library-summary').textContent = `曲库 ${profile.librarySize ?? '--'} 首${profile.queueSize ? ` · 待播放 ${profile.queueSize} 首` : ''}${profile.refreshing ? ' · 刷新中' : ''}`;
+  musicNode('music-library-summary').textContent = `曲库 ${profile.librarySize ?? '--'} 首${profile.queueSize ? ` · 临时队列待播 ${profile.queueSize} 首` : ''}${profile.refreshing ? ' · 刷新中' : ''}`;
+  const queue = Array.isArray(profile.queue) ? profile.queue : [];
+  musicNode('music-runtime-queue').hidden = queue.length === 0;
+  musicNode('music-runtime-queue-count').textContent = queue.length ? `正在播放 1 首 · 后续 ${Math.max(0, queue.length - 1)} 首` : '临时队列';
+  musicNode('music-runtime-queue-list').innerHTML = queue.map((song, index) => `<div class="music-queue-item${song.current ? ' current' : ''}"><span class="music-queue-order">${song.current ? '播放中' : `待播 ${index}`}</span><strong>${escapeMusic(song.name || '未命名歌曲')}</strong><small>${song.durationSec ? `${Math.round(song.durationSec)} 秒` : ''}</small></div>`).join('');
   musicNode('music-volume').value = profile.volume ?? 30;
   musicNode('music-volume-value').value = profile.volume ?? 30;
 }
@@ -108,8 +113,8 @@ document.querySelectorAll('.music-track-list').forEach(list => list.addEventList
   const index = Number(button.dataset.trackIndex), song = source[index]; if (!song) return;
   try {
     if (button.dataset.trackAction === 'play') {
-      if (context === 'search') await musicAction('play', { path: song.path }, '已开始播放');
-      else await musicAction('collection/play', { source: context, index }, '已开始播放列表');
+      if (context === 'search') await musicAction('play', { path: song.path, repeat: musicRepeat() }, '已开始播放');
+      else await musicAction('collection/play', { source: context, index, repeat: musicRepeat() }, '已开始播放列表');
     } else if (button.dataset.trackAction === 'add') { await updatePlaylist([song]); musicToast('已加入播放列表'); }
     else if (button.dataset.trackAction === 'favorite') await toggleFavorite(song);
     else if (button.dataset.trackAction === 'remove') { const data = await musicRequest(`${profileApi('playlist')}?path=${encodeURIComponent(song.path)}`, { method: 'DELETE' }); musicState.playlist = data.playlist; renderCollections(); }
@@ -117,16 +122,32 @@ document.querySelectorAll('.music-track-list').forEach(list => list.addEventList
 }));
 
 musicNode('music-add-all').addEventListener('click', async () => { try { await updatePlaylist(musicState.results); musicToast(`已加入 ${musicState.results.length} 首歌曲`); } catch (error) { musicToast(error.message); } });
-musicNode('music-play-all').addEventListener('click', () => musicAction('collection/play', { source: 'playlist', index: 0 }, '已开始播放列表'));
-musicNode('music-play-favorites').addEventListener('click', () => musicAction('collection/play', { source: 'favorites', index: 0 }, '已开始播放我喜欢'));
+musicNode('music-play-all').addEventListener('click', () => musicAction('collection/play', { source: 'playlist', index: 0, repeat: musicRepeat() }, '已开始播放列表'));
+musicNode('music-play-favorites').addEventListener('click', () => musicAction('collection/play', { source: 'favorites', index: 0, repeat: musicRepeat() }, '已开始播放我喜欢'));
 musicNode('music-clear-playlist').addEventListener('click', async () => { if (!musicState.playlist.length || !confirm('确定清空播放列表吗？喜欢的歌曲不会受影响。')) return; try { await updatePlaylist([], 'replace'); musicToast('播放列表已清空'); } catch (error) { musicToast(error.message); } });
 musicNode('music-speaker').addEventListener('change', async event => { musicState.selected = event.target.value; musicState.results = []; renderMusicResults(); renderMusicStatus(); await loadMusicCollection(); });
-musicNode('music-random').addEventListener('click', () => musicAction('random', {}, '已开始随机播放'));
+musicNode('music-random').addEventListener('click', () => musicAction('random', { repeat: musicRepeat() }, '已开始随机播放'));
 musicNode('music-stop').addEventListener('click', () => musicAction('stop', {}, '已停止播放'));
 musicNode('music-refresh-library').addEventListener('click', () => musicAction('refresh', {}, '曲库刷新完成'));
 musicNode('music-listener').addEventListener('click', () => { const profile = selectedProfile(); musicAction('listener', { enabled: !profile.listenerEnabled }, profile.listenerEnabled ? '语音监听已关闭' : '语音监听已开启'); });
 musicNode('music-volume').addEventListener('input', event => { musicNode('music-volume-value').value = event.target.value; });
 musicNode('music-volume').addEventListener('change', event => musicAction('volume', { volume: Number(event.target.value) }, `音量已调到 ${event.target.value}`));
+
+musicNode('music-speak-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const profile = selectedProfile(), text = musicNode('music-speak-text').value.trim();
+  if (!profile?.online) return musicToast('音箱服务当前离线');
+  if (!profile.speakerConnected) return musicToast('当前音箱尚未连接');
+  if (!text) return musicToast('请输入要播报的文字');
+  const button = musicNode('music-speak-submit');
+  button.disabled = true; button.textContent = '发送中…';
+  try {
+    await musicRequest(profileApi('speak'), { method: 'POST', body: JSON.stringify({ text }) });
+    musicNode('music-speak-text').value = '';
+    musicToast('文字已发送给音箱');
+  } catch (error) { musicToast(error.message); }
+  finally { button.disabled = false; button.textContent = '发送播报'; }
+});
 
 musicNode('music-settings').addEventListener('click', () => { const profile = selectedProfile(); musicNode('music-config-name').value = profile.name; musicNode('music-config-dirs').value = profile.musicDirs.join('\n'); musicNode('music-config-url').value = profile.baseUrl; musicNode('music-config-limit').value = profile.maxResults; musicNode('music-config-interval').value = profile.refreshInterval; musicNode('music-config-play-keywords').value = profile.playKeywords.join('\n'); musicNode('music-config-stop-keywords').value = profile.stopKeywords.join('\n'); musicNode('music-config-refresh-keywords').value = profile.refreshKeywords.join('\n'); musicNode('music-config-random-keywords').value = profile.randomKeywords.join('\n'); musicNode('music-config-modal').hidden = false; });
 document.querySelectorAll('[data-music-close]').forEach(node => node.addEventListener('click', () => { musicNode('music-config-modal').hidden = true; }));

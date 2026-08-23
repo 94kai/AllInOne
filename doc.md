@@ -173,12 +173,13 @@ Linux CPU/NVMe 温度优先从 `sensors -j` 读取，SATA/USB 硬盘温度通过
 - `GET /api/modules/xiaoai-music/profiles`：两台音箱的在线、监听、曲库和播放状态，并返回当前歌曲及最多 99 首待播队列。
 - `PUT /api/modules/xiaoai-music/profiles/:id`：修改名称、音乐目录、音箱可访问的音乐地址、搜索数量、定时刷新间隔及播放/停止/刷新/随机播放语音关键词，并只重启目标 worker。
 - `GET /api/modules/xiaoai-music/profiles/:id/search?q=...`：搜索歌名、歌手、专辑和文件名，查询最多 100 字符。
-- `POST .../:id/play`：播放索引中的指定歌曲。
+- `POST .../:id/play`：播放索引中的指定歌曲，可通过 `repeat` 指定 1–20 次总播放轮数。
 - `POST .../:id/play-search`：按关键词生成播放队列。
-- `POST .../:id/random`：随机生成播放队列。
+- `POST .../:id/random`：随机生成播放队列，可通过 `repeat` 指定 1–20 次总播放轮数。
 - `POST .../:id/stop`：停止播放并清空队列。
 - `POST .../:id/refresh`：刷新目标实例曲库索引。
 - `POST .../:id/listener`：开启或关闭目标实例语音监听，状态持久化。
+- `POST .../:id/speak`：让当前音箱直接播报提交的文字；内容去除首尾空白后必须为 1–500 个字符，并拒绝不支持的控制字符。
 
 模块配置保存在 `data/xiaoai-music/config.json`，两个索引分别保存在同目录的 `<profile-id>-index.json`；这些运行数据均被 Git 忽略。配置只接受 1–10 个绝对音乐目录及 HTTP/HTTPS 音乐地址。曲库索引、元数据读取、Range 音乐服务、播放队列、语音指令处理以及 open-xiaoai WebSocket/RPC 协议都位于 `modules/xiaoai-music/runtime/`，只依赖 Python 标准库和系统 `ffprobe`。监听端口由每个实例运行时配置，不再需要两份编译产物。原来的两个 PM2 应用已经移除，旧项目目录不再参与运行。
 
@@ -236,9 +237,15 @@ Lucky 或其他反向代理应转发到 `127.0.0.1:2006`，传递 `Host`、`X-Fo
 
 “关闭语音监听”只注销语音事件处理，不关闭音箱 WebSocket。播放、停止和音量控制继续复用常驻连接，因此关闭语音指令接管后仍可通过网页控制音箱。
 
+播放台提供“文字播报”输入区，发送目标跟随当前选择的音箱。播报复用 worker 与音箱的常驻 WebSocket，并调用音箱端 TTS 脚本直接朗读原文，不经过小爱问答或语义改写；音箱服务离线或设备尚未连接时，网页不会发送并会明确提示。
+
+播放台的“循环次数”范围为 1–20，表示本次播放的总轮数，`1` 为正常播放一次。搜索结果中的单曲会重复指定次数；播放列表、我喜欢和随机队列会保持本轮顺序，并将完整列表重复指定轮数。循环后的单次播放队列最多 2000 首，播放到最后一轮末尾后停止。
+
+“当前播放队列”是 worker 内存中的本次播放任务，展示正在播放歌曲及后续最多 99 首，停止播放或服务重启后会清空；“保存的播放列表”是用户主动加入并持久化的数据。随机播放、搜索结果直接播放或循环展开只会生成当前播放队列，不会自动写入保存列表。
+
 - `GET /api/modules/xiaoai-music/profiles/:id/collection`：读取该音箱播放列表及模块喜欢列表。
 - `POST /api/modules/xiaoai-music/profiles/:id/playlist`：追加歌曲或以 `mode=replace` 替换、清空持久播放列表。
 - `DELETE /api/modules/xiaoai-music/profiles/:id/playlist?path=...`：从持久播放列表移除歌曲。
 - `PUT /api/modules/xiaoai-music/profiles/:id/favorites`：添加或取消喜欢。
-- `POST /api/modules/xiaoai-music/profiles/:id/collection/play`：从列表指定位置开始连续播放。
+- `POST /api/modules/xiaoai-music/profiles/:id/collection/play`：从列表指定位置开始连续播放，可通过 `repeat` 指定 1–20 次总播放轮数。
 - `POST /api/modules/xiaoai-music/profiles/:id/volume`：设置该音箱音量，范围 0–100。
