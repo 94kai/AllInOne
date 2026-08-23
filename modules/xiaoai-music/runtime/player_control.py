@@ -35,3 +35,9 @@ async def play_music_url(url: str):
 
 async def stop_playback():
     return await run_shell("mphelper pause")
+
+
+async def set_volume(volume: int):
+    value = max(0, min(100, int(volume)))
+    payload = json.dumps({"volume": value})
+    return await run_shell(f"ubus call mediaplayer player_set_volume '{payload}'")

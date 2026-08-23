@@ -30,22 +30,30 @@ sys.modules["config"] = config_module
 
 import open_xiaoai_server  # noqa: E402
 from main import App, on_event_callback  # noqa: E402
+from player_control import set_volume  # noqa: E402
 
 
 class Runtime:
     loop = None
     listener_task = None
+    listener_enabled = False
     api_server = None
     stopping = False
 
     @classmethod
     async def set_listener(cls, enabled):
-        if enabled:
-            if cls.listener_task and not cls.listener_task.done():
-                return
+        cls.listener_enabled = bool(enabled)
+        if cls.listener_enabled:
             open_xiaoai_server.register_fn("on_event", on_event_callback)
+        else:
+            open_xiaoai_server.unregister_fn("on_event")
+        # 播放、暂停和音量控制也复用这条 WebSocket，因此关闭语音识别时仍保持连接。
+        if not cls.listener_task or cls.listener_task.done():
             cls.listener_task = open_xiaoai_server.start_server()
-        elif cls.listener_task:
+
+    @classmethod
+    async def stop_connection(cls):
+        if cls.listener_task:
             cls.listener_task.cancel()
             try:
                 await cls.listener_task
@@ -63,7 +71,7 @@ class Runtime:
         return {
             "id": PROFILE["id"],
             "name": PROFILE["name"],
-            "listenerEnabled": bool(cls.listener_task and not cls.listener_task.done()),
+            "listenerEnabled": cls.listener_enabled,
             "speakerConnected": open_xiaoai_server.is_connected(),
             "librarySize": App.searcher.index_size(),
             "refreshing": App.index_refresh_lock.locked(),
@@ -112,6 +120,24 @@ class Runtime:
         async with App.local_music_lock:
             await App._start_song_unlocked(songs[0], trigger="网页播放")
 
+    @classmethod
+    async def play_paths(cls, paths):
+        clean_paths = list(dict.fromkeys(str(item) for item in paths if str(item)))[:500]
+        if not clean_paths:
+            raise ValueError("播放列表不能为空")
+        with App.searcher._lock:
+            allowed = {song.path for song in App.searcher._songs}
+        if any(item not in allowed for item in clean_paths):
+            raise ValueError("播放列表包含不在当前曲库中的歌曲")
+        songs = await asyncio.to_thread(App._build_song_items, clean_paths, App.music_server)
+        if not songs:
+            raise ValueError("播放列表中没有可播放的歌曲")
+        await App.clear_queue(stop_device=True)
+        async with App.local_music_lock:
+            App.play_queue = songs
+            first_song = App.play_queue.pop(0)
+            await App._start_song_unlocked(first_song, trigger="网页播放列表")
+
 
 def run_async(coro, timeout=120):
     future = asyncio.run_coroutine_threadsafe(coro, Runtime.loop)
@@ -151,6 +177,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             body = self.read_json()
             if self.path == "/play":
                 run_async(Runtime.play_path(str(body.get("path", ""))))
+            elif self.path == "/queue/play":
+                run_async(Runtime.play_paths(body.get("paths", [])))
             elif self.path == "/play-search":
                 run_async(App.play_local_music_by_keyword(str(body.get("keyword", "")).strip()))
             elif self.path == "/random":
@@ -162,6 +190,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"success": True, "total": total, "costMs": cost_ms})
             elif self.path == "/listener":
                 run_async(Runtime.set_listener(bool(body.get("enabled"))))
+            elif self.path == "/volume":
+                volume = max(0, min(100, int(body.get("volume", 0))))
+                run_async(set_volume(volume))
+                return self.send_json(200, {"success": True, "volume": volume})
             else:
                 return self.send_json(404, {"error": "接口不存在"})
             self.send_json(200, {"success": True})
@@ -191,7 +223,7 @@ async def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         Runtime.loop.add_signal_handler(sig, stop_event.set)
     await stop_event.wait()
-    await Runtime.set_listener(False)
+    await Runtime.stop_connection()
     if App.index_refresh_task:
         App.index_refresh_task.cancel()
     Runtime.api_server.shutdown()

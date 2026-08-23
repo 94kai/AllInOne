@@ -230,3 +230,15 @@ Lucky 或其他反向代理应转发到 `127.0.0.1:2006`，传递 `Host`、`X-Fo
 - 未提供常驻实时网速或网络流量监控；测速仅在用户主动启动后运行，并限制采样窗口和单次传输大小。
 - 当前只提供单一共享令牌，没有多用户账号、权限分级和登录限速。
 - 音乐下载依赖第三方平台公开接口及 `media-get`，平台调整可能导致部分来源暂时不可用；当前没有歌词刮削，自动元信息匹配也可能因同名歌曲产生偏差，因此必须由用户确认后写入。
+网页播放台将“当前播放状态”“持久播放列表”“曲库搜索”和“我喜欢”分开管理。播放列表按音箱保存，“我喜欢”在模块内共享；二者写入 `data/xiaoai-music/library.json`，服务或浏览器重启后仍可恢复。搜索结果可以立即播放、逐首加入或全部加入播放列表；点击播放列表或喜欢列表的任意一首时，从该位置开始连续播放后续歌曲。停止设备播放不会删除持久列表。
+
+播放台还支持每台音箱独立的 0–100 音量设置。网页通过 worker 在音箱端调用 `ubus call mediaplayer player_set_volume`，最后设置值随音箱配置持久化；具体听感和最小音量仍由音箱固件决定。
+
+“关闭语音监听”只注销语音事件处理，不关闭音箱 WebSocket。播放、停止和音量控制继续复用常驻连接，因此关闭语音指令接管后仍可通过网页控制音箱。
+
+- `GET /api/modules/xiaoai-music/profiles/:id/collection`：读取该音箱播放列表及模块喜欢列表。
+- `POST /api/modules/xiaoai-music/profiles/:id/playlist`：追加歌曲或以 `mode=replace` 替换、清空持久播放列表。
+- `DELETE /api/modules/xiaoai-music/profiles/:id/playlist?path=...`：从持久播放列表移除歌曲。
+- `PUT /api/modules/xiaoai-music/profiles/:id/favorites`：添加或取消喜欢。
+- `POST /api/modules/xiaoai-music/profiles/:id/collection/play`：从列表指定位置开始连续播放。
+- `POST /api/modules/xiaoai-music/profiles/:id/volume`：设置该音箱音量，范围 0–100。

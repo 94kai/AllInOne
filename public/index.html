@@ -88,16 +88,30 @@
           <div class="music-status"><span class="status-dot" id="music-online-dot"></span><span id="music-status-text">正在连接</span></div>
           <button class="secondary-button" id="music-settings" type="button">配置</button>
         </div>
-        <form class="music-search" id="music-search-form"><input id="music-query" type="search" maxlength="100" placeholder="搜索歌名、歌手或专辑" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
-        <div class="music-actions">
-          <button class="secondary-button" id="music-random" type="button">随机播放</button>
-          <button class="secondary-button" id="music-stop" type="button">停止播放</button>
-          <button class="secondary-button" id="music-refresh-library" type="button">刷新曲库</button>
-          <button class="secondary-button" id="music-listener" type="button">关闭语音监听</button>
+        <div class="music-now-playing">
+          <div class="music-now-copy"><span>正在播放</span><strong id="music-current-song">当前未播放</strong><small id="music-library-summary">正在读取曲库</small></div>
+          <div class="music-volume"><label for="music-volume">音量 <output id="music-volume-value">30</output></label><input id="music-volume" type="range" min="0" max="100" step="1" value="30"></div>
+          <button class="secondary-button" id="music-stop" type="button">停止</button>
         </div>
-        <div class="music-summary" id="music-summary"><span>曲库 -- 首</span><span>当前未播放</span></div>
-        <section class="music-queue-panel" id="music-queue-panel" hidden><div class="music-list-heading"><strong>播放队列</strong><span id="music-queue-count"></span></div><div class="music-queue" id="music-queue"></div></section>
-        <div class="music-results" id="music-results"><div class="empty-state">输入关键词搜索曲库</div></div>
+        <div class="music-actions"><button class="secondary-button" id="music-random" type="button">随便听听</button><button class="secondary-button" id="music-refresh-library" type="button">刷新曲库</button><button class="secondary-button" id="music-listener" type="button">关闭语音监听</button></div>
+        <div class="music-library-tabs" role="tablist" aria-label="音乐资料库">
+          <button class="active" type="button" data-library-tab="playlist">播放列表 <span id="music-playlist-count">0</span></button>
+          <button type="button" data-library-tab="search">搜索歌曲</button>
+          <button type="button" data-library-tab="favorites">我喜欢 <span id="music-favorites-count">0</span></button>
+        </div>
+        <section class="music-library-panel" data-library-panel="playlist">
+          <div class="music-list-toolbar"><div><strong>我的播放列表</strong><span>列表会自动保存</span></div><div><button class="secondary-button" id="music-play-all" type="button">播放全部</button><button class="secondary-button danger" id="music-clear-playlist" type="button">清空</button></div></div>
+          <div class="music-track-list" id="music-playlist"><div class="empty-state">播放列表为空，去搜索歌曲添加吧</div></div>
+        </section>
+        <section class="music-library-panel" data-library-panel="search" hidden>
+          <form class="music-search" id="music-search-form"><input id="music-query" type="search" maxlength="100" placeholder="搜索歌名、歌手或专辑" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
+          <div class="music-search-meta"><span id="music-search-note">输入关键词搜索曲库</span><button class="secondary-button" id="music-add-all" type="button" hidden>全部加入列表</button></div>
+          <div class="music-track-list" id="music-results"><div class="empty-state">输入关键词搜索曲库</div></div>
+        </section>
+        <section class="music-library-panel" data-library-panel="favorites" hidden>
+          <div class="music-list-toolbar"><div><strong>我喜欢</strong><span>收藏的歌曲会保存在服务器</span></div><button class="secondary-button" id="music-play-favorites" type="button">播放全部</button></div>
+          <div class="music-track-list" id="music-favorites"><div class="empty-state">还没有喜欢的歌曲</div></div>
+        </section>
         </div>
 
         <div class="music-module-panel" data-music-panel="downloads" hidden>

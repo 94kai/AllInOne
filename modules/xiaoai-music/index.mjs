@@ -24,8 +24,10 @@ export class XiaoAiMusicModule {
     this.moduleDir = path.join(projectDir, 'modules', 'xiaoai-music');
     this.dataDir = path.join(dataDir, 'xiaoai-music');
     this.configFile = path.join(this.dataDir, 'config.json');
+    this.libraryFile = path.join(this.dataDir, 'library.json');
     this.children = new Map();
     this.config = null;
+    this.library = { favorites: [], playlists: {} };
     this.shuttingDown = false;
   }
 
@@ -34,6 +36,8 @@ export class XiaoAiMusicModule {
     try { this.config = JSON.parse(await readFile(this.configFile, 'utf8')); }
     catch { this.config = { profiles: defaultProfiles.map(profile => this.normalizeProfile(profile)) }; }
     this.config = { profiles: (this.config.profiles || []).map(profile => this.normalizeProfile(profile, profile)) };
+    try { this.library = JSON.parse(await readFile(this.libraryFile, 'utf8')); } catch { this.library = { favorites: [], playlists: {} }; }
+    this.library = { favorites: Array.isArray(this.library.favorites) ? this.library.favorites : [], playlists: this.library.playlists && typeof this.library.playlists === 'object' ? this.library.playlists : {} };
     await this.save();
     for (const profile of this.config.profiles) this.start(profile);
   }
@@ -57,7 +61,8 @@ export class XiaoAiMusicModule {
       stopKeywords: this.keywordList(input.stopKeywords ?? previous.stopKeywords, ['停止播放', '暂停播放', '停止', '暂停', '闭嘴', '别放了']),
       refreshKeywords: this.keywordList(input.refreshKeywords ?? previous.refreshKeywords, ['刷新曲库']),
       randomKeywords: this.keywordList(input.randomKeywords ?? previous.randomKeywords, ['随便听听']),
-      listenerEnabled: input.listenerEnabled ?? previous.listenerEnabled ?? true
+      listenerEnabled: input.listenerEnabled ?? previous.listenerEnabled ?? true,
+      volume: Math.max(0, Math.min(100, Number(input.volume ?? previous.volume ?? 30)))
     };
   }
 
@@ -83,6 +88,40 @@ export class XiaoAiMusicModule {
     const temporary = `${this.configFile}.tmp`;
     await writeFile(temporary, `${JSON.stringify(this.config, null, 2)}\n`, 'utf8'); await rename(temporary, this.configFile);
     for (const profile of this.config.profiles) await writeFile(path.join(this.dataDir, `${profile.id}-worker.json`), JSON.stringify(this.workerConfig(profile)), 'utf8');
+  }
+
+  async saveLibrary() {
+    const temporary = `${this.libraryFile}.tmp`;
+    await writeFile(temporary, `${JSON.stringify(this.library, null, 2)}\n`, 'utf8');
+    await rename(temporary, this.libraryFile);
+  }
+
+  playlist(profile) {
+    if (!Array.isArray(this.library.playlists[profile.id])) this.library.playlists[profile.id] = [];
+    return this.library.playlists[profile.id];
+  }
+
+  normalizeSong(input, profile) {
+    const songPath = String(input?.path || '').trim();
+    if (!path.isAbsolute(songPath) || !profile.musicDirs.some(root => {
+      const relative = path.relative(path.resolve(root), path.resolve(songPath));
+      return relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    })) throw Object.assign(new Error('歌曲不在该音箱的受控曲库目录中'), { status: 400 });
+    return {
+      path: songPath,
+      name: String(input.name || path.basename(songPath)).slice(0, 300),
+      title: String(input.title || '').slice(0, 200), artist: String(input.artist || '').slice(0, 200),
+      album: String(input.album || '').slice(0, 200), size: Math.max(0, Number(input.size) || 0), addedAt: new Date().toISOString()
+    };
+  }
+
+  addSongs(target, songs, profile) {
+    const byPath = new Map(target.map(song => [song.path, song]));
+    for (const input of (Array.isArray(songs) ? songs : []).slice(0, 500)) {
+      const song = this.normalizeSong(input, profile);
+      if (!byPath.has(song.path)) { target.push(song); byPath.set(song.path, song); }
+    }
+    if (target.length > 1000) target.splice(1000);
   }
 
   start(profile) {
@@ -140,10 +179,41 @@ export class XiaoAiMusicModule {
       Object.assign(profile, updated); await this.stop(profile.id); await this.save(); this.start(profile); json(res, 200, { profile: this.publicProfile(profile) }); return true;
     }
     if (action === 'search' && req.method === 'GET') { json(res, 200, await this.worker(profile, `/search?q=${encodeURIComponent(String(url.searchParams.get('q') || '').slice(0, 100))}`)); return true; }
-    if (['play', 'play-search', 'random', 'stop', 'refresh', 'listener'].includes(action) && req.method === 'POST') {
+    if (action === 'collection' && req.method === 'GET') {
+      json(res, 200, { playlist: this.playlist(profile), favorites: this.library.favorites }); return true;
+    }
+    if (action === 'playlist' && req.method === 'POST') {
+      const payload = await body(req); const target = this.playlist(profile);
+      if (payload.mode === 'replace') target.splice(0);
+      this.addSongs(target, payload.songs, profile); await this.saveLibrary();
+      json(res, 200, { playlist: target }); return true;
+    }
+    if (action === 'playlist' && req.method === 'DELETE') {
+      const songPath = String(url.searchParams.get('path') || ''); const target = this.playlist(profile);
+      const index = target.findIndex(song => song.path === songPath);
+      if (index < 0) throw Object.assign(new Error('歌曲不在播放列表中'), { status: 404 });
+      target.splice(index, 1); await this.saveLibrary(); json(res, 200, { playlist: target }); return true;
+    }
+    if (action === 'favorites' && req.method === 'PUT') {
+      const payload = await body(req); const song = this.normalizeSong(payload.song, profile);
+      const index = this.library.favorites.findIndex(item => item.path === song.path);
+      if (payload.favorite === false) { if (index >= 0) this.library.favorites.splice(index, 1); }
+      else if (index < 0) this.library.favorites.unshift(song);
+      await this.saveLibrary(); json(res, 200, { favorites: this.library.favorites }); return true;
+    }
+    if (action === 'collection/play' && req.method === 'POST') {
+      const payload = await body(req); const source = payload.source === 'favorites' ? this.library.favorites : this.playlist(profile);
+      const start = Math.max(0, Math.min(source.length - 1, Number(payload.index) || 0));
+      if (!source.length) throw Object.assign(new Error('列表为空'), { status: 400 });
+      const ordered = source.slice(start);
+      const result = await this.worker(profile, '/queue/play', { method: 'POST', body: JSON.stringify({ paths: ordered.map(song => song.path) }) });
+      json(res, 200, result); return true;
+    }
+    if (['play', 'play-search', 'random', 'stop', 'refresh', 'listener', 'volume'].includes(action) && req.method === 'POST') {
       const payload = await body(req);
       const result = await this.worker(profile, `/${action}`, { method: 'POST', body: JSON.stringify(payload), timeout: action === 'refresh' ? 600000 : 120000 });
       if (action === 'listener') { profile.listenerEnabled = Boolean(payload.enabled); await this.save(); }
+      if (action === 'volume') { profile.volume = Math.max(0, Math.min(100, Number(payload.volume))); await this.save(); }
       json(res, 200, result); return true;
     }
     json(res, 405, { error: '请求方法不支持' }); return true;
