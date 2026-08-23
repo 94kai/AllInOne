@@ -58,11 +58,12 @@ function renderMusicStatus() {
   musicNode('music-status-text').textContent = profile.online ? `${profile.speakerConnected ? '音箱已连接' : '等待音箱连接'}${profile.listenerEnabled ? '' : ' · 语音监听已关闭'} · WS ${profile.wsPort}` : `离线 · ${profile.processError || '服务未启动'}`;
   musicNode('music-listener').textContent = profile.listenerEnabled ? '关闭语音监听' : '开启语音监听';
   musicNode('music-current-song').textContent = profile.currentSong || '当前未播放';
+  musicNode('music-artwork-letter').textContent = (profile.currentSong || profile.name || 'A').trim().slice(0, 1).toUpperCase();
   musicNode('music-library-summary').textContent = `曲库 ${profile.librarySize ?? '--'} 首${profile.queueSize ? ` · 临时队列待播 ${profile.queueSize} 首` : ''}${profile.refreshing ? ' · 刷新中' : ''}`;
   const queue = Array.isArray(profile.queue) ? profile.queue : [];
-  musicNode('music-runtime-queue').hidden = queue.length === 0;
-  musicNode('music-runtime-queue-count').textContent = queue.length ? `正在播放 1 首 · 后续 ${Math.max(0, queue.length - 1)} 首` : '临时队列';
-  musicNode('music-runtime-queue-list').innerHTML = queue.map((song, index) => `<div class="music-queue-item${song.current ? ' current' : ''}"><span class="music-queue-order">${song.current ? '播放中' : `待播 ${index}`}</span><strong>${escapeMusic(song.name || '未命名歌曲')}</strong><small>${song.durationSec ? `${Math.round(song.durationSec)} 秒` : ''}</small></div>`).join('');
+  musicNode('music-queue-badge').textContent = profile.queueSize || 0;
+  musicNode('music-runtime-queue-count').textContent = queue.length ? `正在播放 1 首 · 后续 ${Math.max(0, queue.length - 1)} 首` : '当前没有待播歌曲';
+  musicNode('music-runtime-queue-list').innerHTML = queue.map((song, index) => `<div class="music-queue-item${song.current ? ' current' : ''}"><span class="music-queue-order">${song.current ? 'NOW' : String(index).padStart(2, '0')}</span><strong>${escapeMusic(song.name || '未命名歌曲')}</strong><small>${song.durationSec ? `${Math.round(song.durationSec)} 秒` : ''}</small></div>`).join('') || '<div class="music-queue-empty">播放歌曲后，这里会显示接下来播放的内容。</div>';
   musicNode('music-volume').value = profile.volume ?? 30;
   musicNode('music-volume-value').value = profile.volume ?? 30;
 }
@@ -72,7 +73,9 @@ async function loadMusicProfiles(keepSelection = true) {
     const data = await musicRequest('/api/modules/xiaoai-music/profiles'); musicState.profiles = data.profiles;
     if (!keepSelection || !data.profiles.some(item => item.id === musicState.selected)) musicState.selected = data.profiles[0]?.id || '';
     musicNode('music-speaker').innerHTML = data.profiles.map(item => `<option value="${escapeMusic(item.id)}">${escapeMusic(item.name)}</option>`).join('');
-    musicNode('music-speaker').value = musicState.selected; renderMusicStatus();
+    musicNode('music-speaker').value = musicState.selected;
+    musicNode('music-speaker-chips').innerHTML = data.profiles.map(item => `<button class="music-room-chip${item.id === musicState.selected ? ' active' : ''}" type="button" role="tab" aria-selected="${item.id === musicState.selected}" data-speaker-id="${escapeMusic(item.id)}"><span class="status-dot${item.speakerConnected ? '' : ' offline'}"></span><span><strong>${escapeMusic(item.name)}</strong><small>${item.speakerConnected ? '已连接' : item.online ? '等待连接' : '离线'}</small></span></button>`).join('');
+    renderMusicStatus();
   } catch (error) { musicToast(error.message); }
 }
 
@@ -126,12 +129,24 @@ musicNode('music-play-all').addEventListener('click', () => musicAction('collect
 musicNode('music-play-favorites').addEventListener('click', () => musicAction('collection/play', { source: 'favorites', index: 0, repeat: musicRepeat() }, '已开始播放我喜欢'));
 musicNode('music-clear-playlist').addEventListener('click', async () => { if (!musicState.playlist.length || !confirm('确定清空播放列表吗？喜欢的歌曲不会受影响。')) return; try { await updatePlaylist([], 'replace'); musicToast('播放列表已清空'); } catch (error) { musicToast(error.message); } });
 musicNode('music-speaker').addEventListener('change', async event => { musicState.selected = event.target.value; musicState.results = []; renderMusicResults(); renderMusicStatus(); await loadMusicCollection(); });
+musicNode('music-speaker-chips').addEventListener('click', async event => {
+  const chip = event.target.closest('[data-speaker-id]'); if (!chip || chip.dataset.speakerId === musicState.selected) return;
+  musicState.selected = chip.dataset.speakerId; musicState.results = []; musicNode('music-speaker').value = musicState.selected;
+  document.querySelectorAll('[data-speaker-id]').forEach(node => { const active = node.dataset.speakerId === musicState.selected; node.classList.toggle('active', active); node.setAttribute('aria-selected', String(active)); });
+  renderMusicResults(); renderMusicStatus(); await loadMusicCollection();
+});
 musicNode('music-random').addEventListener('click', () => musicAction('random', { repeat: musicRepeat() }, '已开始随机播放'));
 musicNode('music-stop').addEventListener('click', () => musicAction('stop', {}, '已停止播放'));
 musicNode('music-refresh-library').addEventListener('click', () => musicAction('refresh', {}, '曲库刷新完成'));
 musicNode('music-listener').addEventListener('click', () => { const profile = selectedProfile(); musicAction('listener', { enabled: !profile.listenerEnabled }, profile.listenerEnabled ? '语音监听已关闭' : '语音监听已开启'); });
 musicNode('music-volume').addEventListener('input', event => { musicNode('music-volume-value').value = event.target.value; });
 musicNode('music-volume').addEventListener('change', event => musicAction('volume', { volume: Number(event.target.value) }, `音量已调到 ${event.target.value}`));
+musicNode('music-open-queue').addEventListener('click', () => musicNode('music-runtime-queue').classList.add('open'));
+musicNode('music-close-queue').addEventListener('click', () => musicNode('music-runtime-queue').classList.remove('open'));
+musicNode('music-open-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = false; setTimeout(() => musicNode('music-speak-text').focus(), 0); });
+musicNode('music-close-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = true; });
+musicNode('music-speak-sheet').addEventListener('click', event => { if (event.target === musicNode('music-speak-sheet')) musicNode('music-speak-sheet').hidden = true; });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { musicNode('music-speak-sheet').hidden = true; musicNode('music-runtime-queue').classList.remove('open'); } });
 
 musicNode('music-speak-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -144,6 +159,7 @@ musicNode('music-speak-form').addEventListener('submit', async event => {
   try {
     await musicRequest(profileApi('speak'), { method: 'POST', body: JSON.stringify({ text }) });
     musicNode('music-speak-text').value = '';
+    musicNode('music-speak-sheet').hidden = true;
     musicToast('文字已发送给音箱');
   } catch (error) { musicToast(error.message); }
   finally { button.disabled = false; button.textContent = '发送播报'; }
