@@ -145,6 +145,7 @@ function formatBytes(value) {
 
 function setGreeting() {
   $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : '音乐';
+  $('#refresh-button').hidden = state.view === 'music';
 }
 
 function switchMusicTab(tab) {

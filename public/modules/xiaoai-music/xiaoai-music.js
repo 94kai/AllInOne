@@ -58,7 +58,6 @@ function renderMusicStatus() {
   musicNode('music-status-text').textContent = profile.online ? `${profile.speakerConnected ? '音箱已连接' : '等待音箱连接'}${profile.listenerEnabled ? '' : ' · 语音监听已关闭'} · WS ${profile.wsPort}` : `离线 · ${profile.processError || '服务未启动'}`;
   musicNode('music-listener').textContent = profile.listenerEnabled ? '关闭语音监听' : '开启语音监听';
   musicNode('music-current-song').textContent = profile.currentSong || '当前未播放';
-  musicNode('music-artwork-letter').textContent = (profile.currentSong || profile.name || 'A').trim().slice(0, 1).toUpperCase();
   musicNode('music-library-summary').textContent = `曲库 ${profile.librarySize ?? '--'} 首${profile.queueSize ? ` · 临时队列待播 ${profile.queueSize} 首` : ''}${profile.refreshing ? ' · 刷新中' : ''}`;
   const queue = Array.isArray(profile.queue) ? profile.queue : [];
   musicNode('music-queue-badge').textContent = profile.queueSize || 0;
