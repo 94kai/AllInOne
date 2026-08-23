@@ -210,6 +210,11 @@ export class XiaoAiMusicModule {
       const result = await this.worker(profile, '/queue/play', { method: 'POST', body: JSON.stringify({ paths: ordered.map(song => song.path), repeat }) });
       json(res, 200, result); return true;
     }
+    if (action === 'queue/jump' && req.method === 'POST') {
+      const payload = await body(req);
+      const result = await this.worker(profile, '/queue/jump', { method: 'POST', body: JSON.stringify({ index: Number(payload.index) }) });
+      json(res, 200, result); return true;
+    }
     if (['play', 'play-search', 'random', 'stop', 'refresh', 'listener', 'volume', 'speak'].includes(action) && req.method === 'POST') {
       const payload = await body(req);
       if (['play', 'random'].includes(action)) payload.repeat = Math.max(1, Math.min(20, Number(payload.repeat) || 1));

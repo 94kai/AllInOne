@@ -30,7 +30,8 @@ document.querySelectorAll('[data-icon]').forEach(node => {
   node.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[node.dataset.icon] || icons.file}</svg>`;
 });
 
-const state = { view: 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
+const storedView = localStorage.getItem('allinone-active-view');
+const state = { view: ['home', 'files', 'speed', 'music'].includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const defaultNavOrder = ['home', 'files', 'speed', 'music'];
@@ -161,6 +162,7 @@ function switchMusicTab(tab) {
 
 function switchView(view) {
   state.view = view;
+  localStorage.setItem('allinone-active-view', view);
   $$('.page').forEach(node => node.classList.toggle('active', node.id === `${view}-view`));
   $$('.nav-item[data-view]').forEach(node => node.classList.toggle('active', node.dataset.view === view));
   const mobileItem = $(`.bottom-nav .nav-item[data-view="${view}"]`);
@@ -286,7 +288,6 @@ function openLinkNote(item) {
 }
 
 async function initialize() {
-  setGreeting();
   switchMusicTab(localStorage.getItem('allinone-music-tab'));
   $('#hidden-mode').classList.toggle('active', state.showHidden);
   $('#hidden-mode').setAttribute('aria-pressed', String(state.showHidden));
@@ -294,6 +295,7 @@ async function initialize() {
     const config = await request('/api/config'); state.roots = config.roots; state.root = config.roots[0]?.id || '';
     $('#root-select').innerHTML = config.roots.map(root => `<option value="${root.id}">${escapeHtml(root.label)}</option>`).join('');
   } catch (error) { toast(error.message); }
+  switchView(state.view);
   await Promise.all([loadSystem(), loadLinks(), loadFavorites()]);
 }
 

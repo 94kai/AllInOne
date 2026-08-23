@@ -17,7 +17,9 @@ function escapeMusic(value) { return String(value ?? '').replace(/[&<>'"]/g, cha
 function formatMusicBytes(value) { return Number(value) >= 1073741824 ? `${(value / 1073741824).toFixed(1)} GB` : `${(Number(value) / 1048576).toFixed(1)} MB`; }
 function songTitle(song) { return song.title || song.name || song.path.split('/').pop(); }
 function isFavorite(song) { return musicState.favorites.some(item => item.path === song.path); }
-function musicRepeat() { const input = musicNode('music-repeat'); const value = Math.max(1, Math.min(20, Number(input.value) || 1)); input.value = value; return value; }
+function repeatStorageKey() { return `allinone-music-repeat:${musicState.selected || 'default'}`; }
+function storedMusicRepeat() { return Math.max(1, Math.min(20, Number(localStorage.getItem(repeatStorageKey())) || 1)); }
+function musicRepeat() { const input = musicNode('music-repeat'); const value = Math.max(1, Math.min(20, Number(input.value) || 1)); input.value = value; localStorage.setItem(repeatStorageKey(), String(value)); return value; }
 
 function switchLibraryTab(tab) {
   musicState.libraryTab = ['playlist', 'search', 'favorites'].includes(tab) ? tab : 'playlist';
@@ -62,7 +64,7 @@ function renderMusicStatus() {
   const queue = Array.isArray(profile.queue) ? profile.queue : [];
   musicNode('music-queue-badge').textContent = profile.queueSize || 0;
   musicNode('music-runtime-queue-count').textContent = queue.length ? `正在播放 1 首 · 后续 ${Math.max(0, queue.length - 1)} 首` : '当前没有待播歌曲';
-  musicNode('music-runtime-queue-list').innerHTML = queue.map((song, index) => `<div class="music-queue-item${song.current ? ' current' : ''}"><span class="music-queue-order">${song.current ? 'NOW' : String(index).padStart(2, '0')}</span><strong>${escapeMusic(song.name || '未命名歌曲')}</strong><small>${song.durationSec ? `${Math.round(song.durationSec)} 秒` : ''}</small></div>`).join('') || '<div class="music-queue-empty">播放歌曲后，这里会显示接下来播放的内容。</div>';
+  musicNode('music-runtime-queue-list').innerHTML = queue.map((song, index) => `<button class="music-queue-item${song.current ? ' current' : ''}" type="button" data-queue-index="${index}"${song.current ? ' disabled' : ''}><span class="music-queue-order">${song.current ? 'NOW' : String(index).padStart(2, '0')}</span><strong>${escapeMusic(song.name || '未命名歌曲')}</strong><small>${song.durationSec ? `${Math.round(song.durationSec)} 秒` : ''}</small></button>`).join('') || '<div class="music-queue-empty">播放歌曲后，这里会显示接下来播放的内容。</div>';
   musicNode('music-volume').value = profile.volume ?? 30;
   musicNode('music-volume-value').value = profile.volume ?? 30;
 }
@@ -73,6 +75,7 @@ async function loadMusicProfiles(keepSelection = true) {
     if (!keepSelection || !data.profiles.some(item => item.id === musicState.selected)) musicState.selected = data.profiles[0]?.id || '';
     musicNode('music-speaker').innerHTML = data.profiles.map(item => `<option value="${escapeMusic(item.id)}">${escapeMusic(item.name)}</option>`).join('');
     musicNode('music-speaker').value = musicState.selected;
+    musicNode('music-repeat').value = storedMusicRepeat();
     musicNode('music-speaker-chips').innerHTML = data.profiles.map(item => `<button class="music-room-chip${item.id === musicState.selected ? ' active' : ''}" type="button" role="tab" aria-selected="${item.id === musicState.selected}" data-speaker-id="${escapeMusic(item.id)}"><span class="status-dot${item.speakerConnected ? '' : ' offline'}"></span><span><strong>${escapeMusic(item.name)}</strong><small>${item.speakerConnected ? '已连接' : item.online ? '等待连接' : '离线'}</small></span></button>`).join('');
     renderMusicStatus();
   } catch (error) { musicToast(error.message); }
@@ -131,6 +134,7 @@ musicNode('music-speaker').addEventListener('change', async event => { musicStat
 musicNode('music-speaker-chips').addEventListener('click', async event => {
   const chip = event.target.closest('[data-speaker-id]'); if (!chip || chip.dataset.speakerId === musicState.selected) return;
   musicState.selected = chip.dataset.speakerId; musicState.results = []; musicNode('music-speaker').value = musicState.selected;
+  musicNode('music-repeat').value = storedMusicRepeat();
   document.querySelectorAll('[data-speaker-id]').forEach(node => { const active = node.dataset.speakerId === musicState.selected; node.classList.toggle('active', active); node.setAttribute('aria-selected', String(active)); });
   renderMusicResults(); renderMusicStatus(); await loadMusicCollection();
 });
@@ -140,8 +144,15 @@ musicNode('music-refresh-library').addEventListener('click', () => musicAction('
 musicNode('music-listener').addEventListener('click', () => { const profile = selectedProfile(); musicAction('listener', { enabled: !profile.listenerEnabled }, profile.listenerEnabled ? '语音监听已关闭' : '语音监听已开启'); });
 musicNode('music-volume').addEventListener('input', event => { musicNode('music-volume-value').value = event.target.value; });
 musicNode('music-volume').addEventListener('change', event => musicAction('volume', { volume: Number(event.target.value) }, `音量已调到 ${event.target.value}`));
+musicNode('music-repeat').addEventListener('change', musicRepeat);
 musicNode('music-open-queue').addEventListener('click', () => musicNode('music-runtime-queue').classList.add('open'));
 musicNode('music-close-queue').addEventListener('click', () => musicNode('music-runtime-queue').classList.remove('open'));
+musicNode('music-runtime-queue-list').addEventListener('click', async event => {
+  const item = event.target.closest('[data-queue-index]'); if (!item || item.disabled) return;
+  item.disabled = true;
+  await musicAction('queue/jump', { index: Number(item.dataset.queueIndex) }, '已切换歌曲');
+  musicNode('music-runtime-queue').classList.remove('open');
+});
 musicNode('music-open-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = false; setTimeout(() => musicNode('music-speak-text').focus(), 0); });
 musicNode('music-close-speak').addEventListener('click', () => { musicNode('music-speak-sheet').hidden = true; });
 musicNode('music-speak-sheet').addEventListener('click', event => { if (event.target === musicNode('music-speak-sheet')) musicNode('music-speak-sheet').hidden = true; });

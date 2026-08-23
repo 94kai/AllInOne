@@ -146,6 +146,20 @@ class Runtime:
             first_song = App.play_queue.pop(0)
             await App._start_song_unlocked(first_song, trigger="网页播放列表")
 
+    @classmethod
+    async def jump_queue(cls, index):
+        position = int(index)
+        async with App.local_music_lock:
+            queue = ([App.current_song] if App.current_song else []) + list(App.play_queue)
+            if position < 0 or position >= len(queue):
+                raise ValueError("待播歌曲位置无效")
+            if position == 0 and App.current_song:
+                return
+            target = queue[position]
+            await App._cancel_timer_unlocked()
+            App.play_queue = queue[position + 1:]
+            await App._start_song_unlocked(target, trigger="网页队列切歌")
+
 
 def run_async(coro, timeout=120):
     future = asyncio.run_coroutine_threadsafe(coro, Runtime.loop)
@@ -187,6 +201,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 run_async(Runtime.play_path(str(body.get("path", "")), body.get("repeat", 1)))
             elif self.path == "/queue/play":
                 run_async(Runtime.play_paths(body.get("paths", []), body.get("repeat", 1)))
+            elif self.path == "/queue/jump":
+                run_async(Runtime.jump_queue(body.get("index", -1)))
             elif self.path == "/play-search":
                 run_async(App.play_local_music_by_keyword(str(body.get("keyword", "")).strip()))
             elif self.path == "/random":
