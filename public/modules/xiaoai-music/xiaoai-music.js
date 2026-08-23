@@ -1,4 +1,4 @@
-const musicState = { profiles: [], selected: '', results: [], playlist: [], favorites: [], announcements: [], libraryTab: 'playlist' };
+const musicState = { profiles: [], selected: localStorage.getItem('allinone-music-speaker') || '', results: [], playlist: [], favorites: [], announcements: [], libraryTab: 'playlist' };
 const musicNode = id => document.getElementById(id);
 const musicApiBase = ({ 'devstudio.xuekai.top': 'https://aio.xuekai.top:8888' })[location.hostname]
   || (location.port === '8787' ? `${location.protocol}//${location.hostname}:2006` : '');
@@ -74,6 +74,7 @@ async function loadMusicProfiles(keepSelection = true) {
   try {
     const data = await musicRequest('/api/modules/xiaoai-music/profiles'); musicState.profiles = data.profiles;
     if (!keepSelection || !data.profiles.some(item => item.id === musicState.selected)) musicState.selected = data.profiles[0]?.id || '';
+    if (musicState.selected) localStorage.setItem('allinone-music-speaker', musicState.selected);
     musicNode('music-speaker').innerHTML = data.profiles.map(item => `<option value="${escapeMusic(item.id)}">${escapeMusic(item.name)}</option>`).join('');
     musicNode('music-speaker').value = musicState.selected;
     musicNode('music-repeat').value = storedMusicRepeat();
@@ -131,10 +132,11 @@ musicNode('music-add-all').addEventListener('click', async () => { try { await u
 musicNode('music-play-all').addEventListener('click', () => musicAction('collection/play', { source: 'playlist', index: 0, repeat: musicRepeat() }, '已开始播放列表'));
 musicNode('music-play-favorites').addEventListener('click', () => musicAction('collection/play', { source: 'favorites', index: 0, repeat: musicRepeat() }, '已开始播放我喜欢'));
 musicNode('music-clear-playlist').addEventListener('click', async () => { if (!musicState.playlist.length || !confirm('确定清空播放列表吗？喜欢的歌曲不会受影响。')) return; try { await updatePlaylist([], 'replace'); musicToast('播放列表已清空'); } catch (error) { musicToast(error.message); } });
-musicNode('music-speaker').addEventListener('change', async event => { musicState.selected = event.target.value; musicState.results = []; renderMusicResults(); renderMusicStatus(); await loadMusicCollection(); });
+musicNode('music-speaker').addEventListener('change', async event => { musicState.selected = event.target.value; localStorage.setItem('allinone-music-speaker', musicState.selected); musicState.results = []; renderMusicResults(); renderMusicStatus(); await loadMusicCollection(); });
 musicNode('music-speaker-chips').addEventListener('click', async event => {
   const chip = event.target.closest('[data-speaker-id]'); if (!chip || chip.dataset.speakerId === musicState.selected) return;
   musicState.selected = chip.dataset.speakerId; musicState.results = []; musicNode('music-speaker').value = musicState.selected;
+  localStorage.setItem('allinone-music-speaker', musicState.selected);
   musicNode('music-repeat').value = storedMusicRepeat();
   document.querySelectorAll('[data-speaker-id]').forEach(node => { const active = node.dataset.speakerId === musicState.selected; node.classList.toggle('active', active); node.setAttribute('aria-selected', String(active)); });
   renderMusicResults(); renderMusicStatus(); await loadMusicCollection();
@@ -159,7 +161,7 @@ musicNode('music-close-speak').addEventListener('click', () => { musicNode('musi
 musicNode('music-speak-sheet').addEventListener('click', event => { if (event.target === musicNode('music-speak-sheet')) musicNode('music-speak-sheet').hidden = true; });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') { musicNode('music-speak-sheet').hidden = true; musicNode('music-runtime-queue').classList.remove('open'); } });
 
-async function sendAnnouncement(text, closeAfter = false) {
+async function sendAnnouncement(text, clearAfter = false) {
   const profile = selectedProfile(), button = musicNode('music-speak-submit');
   if (button.disabled) return;
   if (!profile?.online) return musicToast('音箱服务当前离线');
@@ -169,7 +171,7 @@ async function sendAnnouncement(text, closeAfter = false) {
   try {
     const data = await musicRequest(profileApi('speak'), { method: 'POST', body: JSON.stringify({ text }) });
     musicState.announcements = data.announcements || musicState.announcements; renderSpeakHistory();
-    if (closeAfter) { musicNode('music-speak-text').value = ''; musicNode('music-speak-sheet').hidden = true; }
+    if (clearAfter) musicNode('music-speak-text').value = '';
     musicToast('文字已发送给音箱');
   } catch (error) { musicToast(error.message); }
   finally { button.disabled = false; button.textContent = '发送给当前音箱'; }
@@ -192,5 +194,5 @@ musicNode('music-config-form').addEventListener('submit', async event => {
 
 document.addEventListener('xiaoai:refresh', () => loadMusicProfiles().then(loadMusicCollection));
 switchLibraryTab('playlist');
-loadMusicProfiles(false).then(loadMusicCollection);
+loadMusicProfiles().then(loadMusicCollection);
 setInterval(() => { if (!document.hidden && document.getElementById('music-view').classList.contains('active')) loadMusicProfiles(); }, 10000);
