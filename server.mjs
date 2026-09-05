@@ -11,6 +11,8 @@ import { handleSpeedTest } from './modules/speed-test/index.mjs';
 import { XiaoAiMusicModule } from './modules/xiaoai-music/index.mjs';
 import { XiaoAiAssistantModule } from './modules/xiaoai-assistant/index.mjs';
 import { MusicDownloadModule } from './modules/music-download/index.mjs';
+import { ChecklistModule } from './modules/checklist/index.mjs';
+import { TerminalModule } from './modules/terminal/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
@@ -85,6 +87,19 @@ const roots = parseRoots();
 const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
 const xiaoAiAssistant = new XiaoAiAssistantModule({ dataDir, xiaoAiMusic });
 const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
+const checklist = new ChecklistModule({ dataDir });
+
+function isAllowedWebSocketOrigin(req) {
+  const origin = String(req.headers.origin || '');
+  if (!origin) return false;
+  try {
+    const originUrl = new URL(origin);
+    const forwardedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    return originUrl.host === forwardedHost || previewOrigins.has(originUrl.origin);
+  } catch { return false; }
+}
+
+const terminal = new TerminalModule({ roots, isAuthenticated, isAllowedOrigin: isAllowedWebSocketOrigin });
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -433,6 +448,8 @@ async function apiHandler(req, res, url) {
   if (await xiaoAiMusic.handle(req, res, url)) return;
   if (await xiaoAiAssistant.handle(req, res, url)) return;
   if (await musicDownload.handle(req, res, url)) return;
+  if (await checklist.handle(req, res, url)) return;
+  if (await terminal.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
   }
@@ -572,6 +589,18 @@ async function requestHandler(req, res) {
     }
 
     if (url.pathname.startsWith('/api/')) return await apiHandler(req, res, url);
+    const terminalVendors = {
+      '/vendor/xterm.js': ['@xterm', 'xterm', 'lib', 'xterm.js'],
+      '/vendor/xterm.css': ['@xterm', 'xterm', 'css', 'xterm.css'],
+      '/vendor/xterm-addon-fit.js': ['@xterm', 'addon-fit', 'lib', 'addon-fit.js'],
+      '/vendor/xterm-addon-search.js': ['@xterm', 'addon-search', 'lib', 'addon-search.js'],
+      '/vendor/xterm-addon-web-links.js': ['@xterm', 'addon-web-links', 'lib', 'addon-web-links.js']
+    };
+    if (terminalVendors[url.pathname]) {
+      const target = path.join(projectDir, 'node_modules', ...terminalVendors[url.pathname]);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return serveFile(req, res, target, url.pathname.endsWith('.css') ? mimeTypes['.css'] : mimeTypes['.js']);
+    }
     const relative = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
     const target = path.resolve(publicDir, relative);
     if (target !== publicDir && !target.startsWith(`${publicDir}${path.sep}`)) return error(res, 403, '禁止访问');
@@ -587,16 +616,19 @@ async function requestHandler(req, res) {
 await xiaoAiMusic.initialize();
 await xiaoAiAssistant.initialize();
 await musicDownload.initialize();
+await checklist.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
   console.log(`文件入口：${roots.map(root => `${root.label} → ${root.path}`).join('，')}`);
 });
+terminal.attach(httpServer);
 
 let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   httpServer.close();
+  terminal.shutdown();
   await xiaoAiMusic.shutdown();
   process.exit(0);
 }

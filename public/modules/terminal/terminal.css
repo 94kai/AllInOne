@@ -1,0 +1,52 @@
+.terminal-page { --terminal-bars: 122px; }
+.terminal-session-bar { height: 48px; padding: 0 10px; display: flex; align-items: center; gap: 12px; color: #aeb9c7; background: #171d25; border-bottom: 1px solid #303945; }
+.terminal-session-bar label { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.terminal-session-bar select { max-width: 190px; height: 34px; padding: 0 27px 0 8px; color: #f0f4f8; border: 1px solid #3b4551; border-radius: 8px; background: #242c36; font: 650 13px ui-monospace,monospace; }
+.terminal-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #7b8795; }
+.terminal-dot.connected { background: #55c58a; box-shadow: 0 0 0 3px #55c58a24; }
+#terminal-connection { min-width: 0; flex: 1; overflow: hidden; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.terminal-session-actions { display: flex; gap: 5px; }
+.terminal-session-actions button { width: 34px; height: 34px; padding: 0; color: #d7dee7; border: 1px solid #3b4551; border-radius: 8px; background: #242c36; cursor: pointer; font-size: 18px; }
+.terminal-stage { position: relative; height: min(680px,calc(100svh - 225px)); min-height: 360px; padding: 8px 5px; overflow: hidden; background: #0f141a; }
+#terminal-screen { width: 100%; height: 100%; }
+#terminal-screen .xterm { height: 100%; padding-left: 4px; }
+#terminal-screen .xterm-viewport { scrollbar-color: #44505e #151b22; }
+.terminal-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; color: #8d9aaa; background: #0f141a; text-align: center; font-size: 13px; }
+.terminal-keys { padding: 6px; display: grid; gap: 5px; background: #202731; border-top: 1px solid #303945; user-select: none; -webkit-user-select: none; }
+.terminal-key-row { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+.terminal-key-row::-webkit-scrollbar { display: none; }
+.terminal-key-row button { min-width: 43px; height: 38px; padding: 0 10px; flex: none; color: #e2e8ef; border: 1px solid #414b58; border-radius: 8px; background: #303945; font: 650 13px ui-monospace,SFMono-Regular,Menlo,monospace; touch-action: manipulation; }
+.terminal-key-row button:active { transform: translateY(1px); background: #46515f; }
+.terminal-key-row .primary-key { color: #fff; background: #405e85; border-color: #5578a8; }
+.terminal-key-row .modifier-key.active { color: #17212d; background: #6ab9ff; border-color: #8bc8ff; }
+.terminal-vim-keys button { height: 34px; color: #bdc8d5; font-size: 12px; }
+.terminal-keyboard { display: grid; gap: 4px; }
+.terminal-kb-row { display: flex; justify-content: center; gap: 4px; }
+.terminal-kb-key { height: 37px; min-width: 0; flex: 1 1 0; padding: 0 1px; color: #f1f4f7; border: 1px solid #46515e; border-radius: 6px; background: #343e4a; box-shadow: 0 1px 0 #111820; font: 650 13px ui-monospace,SFMono-Regular,Menlo,monospace; touch-action: none; }
+.terminal-kb-key:active,.terminal-kb-key.pressed { transform: translateY(1px); background: #4b5867; box-shadow: none; }
+.terminal-kb-key.function { min-width: 30px; color: #cbd5df; background: #29323d; font-size: 11px; }
+.terminal-kb-key.modifier.active { color: #12202d; border-color: #8bc8ff; background: #6ab9ff; }
+.terminal-kb-key.space { flex-grow: 5; }
+.terminal-kb-key.wide { flex-grow: 1.55; }
+.terminal-kb-key.enter { flex-grow: 1.8; color: #fff; background: #405e85; }
+body.terminal-active { overflow: hidden; background: #0f141a; }
+body.terminal-active .topbar { display: none; }
+body.terminal-active .main-content { max-width: none; padding: 0; }
+body.terminal-active .terminal-page.active { height: 100svh; display: flex; flex-direction: column; animation: none; }
+body.terminal-active .terminal-stage { min-height: 0; height: auto; flex: 1; }
+
+@media (min-width: 681px) {
+  body.terminal-active .main-content { width: calc(100% - 224px); }
+  body.terminal-active .terminal-page.active { height: 100vh; }
+}
+
+@media (max-width: 680px) {
+  body.terminal-active .bottom-nav { display: none; }
+  body.terminal-active .terminal-page.active { position: fixed; z-index: 25; top: var(--terminal-viewport-top,0); right: 0; left: 0; height: var(--terminal-viewport-height,100dvh); }
+  .terminal-session-bar { padding-top: env(safe-area-inset-top); height: calc(46px + env(safe-area-inset-top)); gap: 8px; }
+  .terminal-session-bar select { max-width: 132px; }
+  .terminal-keys { padding-bottom: max(6px,env(safe-area-inset-bottom)); }
+  .terminal-vim-keys button { min-width: 44px; height: 31px; }
+  .terminal-kb-key { height: clamp(34px,5.3vh,40px); font-size: 12px; }
+  #terminal-screen { touch-action: none; }
+}

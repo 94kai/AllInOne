@@ -10,6 +10,9 @@
   <link rel="stylesheet" href="/modules/xiaoai-music/xiaoai-music.css">
   <link rel="stylesheet" href="/modules/xiaoai-assistant/xiaoai-assistant.css">
   <link rel="stylesheet" href="/modules/music-download/music-download.css">
+  <link rel="stylesheet" href="/modules/checklist/checklist.css">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/modules/terminal/terminal.css">
 </head>
 <body>
   <div class="app-shell">
@@ -19,6 +22,8 @@
         <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
         <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
         <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
+        <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
+        <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
         <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
         <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
       </nav>
@@ -77,6 +82,32 @@
           <article class="speed-result-card" id="speed-upload-card"><div class="speed-result-icon upload"><span data-icon="download"></span></div><h3>上传速度</h3><strong id="speed-upload-value">--</strong><small id="speed-upload-detail">尚未测试</small></article>
         </div>
         <div class="speed-note">测速会产生约 6–90 MB 临时网络流量，测试数据仅在内存中生成并立即丢弃。结果反映浏览器到本服务器的链路速度，不代表公网宽带速度。</div>
+      </section>
+
+      <section class="page checklist-page" id="checklist-view">
+        <div class="checklist-sticky-tools">
+          <div class="checklist-sticky-status"><span id="checklist-scope-name">全部清单</span><div><span>总数 <strong id="checklist-total-value">0</strong></span><span>已选择 <strong id="checklist-selected-value">0</strong></span></div></div>
+          <form class="checklist-add" id="checklist-add-form"><select id="checklist-add-person" aria-label="归属人"><option>通用</option><option>爸爸</option><option>妈妈</option><option>赞赞</option></select><input id="checklist-input" maxlength="120" autocomplete="off" required placeholder="添加物品，例如：身份证、充电器"><button class="primary-button" type="submit">添加</button></form>
+          <div class="checklist-people" id="checklist-people" role="group" aria-label="按人筛选"><button class="active" type="button" data-checklist-person="全部">全部</button><button type="button" data-checklist-person="爸爸">爸爸</button><button type="button" data-checklist-person="妈妈">妈妈</button><button type="button" data-checklist-person="赞赞">赞赞</button><button type="button" data-checklist-person="通用">通用</button></div>
+        </div>
+        <div class="checklist-toolbar"><div class="checklist-toolbar-left"><div class="checklist-sort" role="group" aria-label="排序方式"><button class="active" type="button" data-checklist-sort="custom">自定义</button><button type="button" data-checklist-sort="pinyin">拼音</button></div><label class="checklist-checked-first"><input id="checklist-checked-first" type="checkbox"><span></span><em>划掉的置顶</em></label></div><button class="secondary-button" id="checklist-reset" type="button">全部取消划掉</button></div>
+        <p class="checklist-hint" id="checklist-hint">自定义排序下，按住右侧把手拖动条目。</p>
+        <div class="checklist-list" id="checklist-list"><div class="empty-state">正在读取清单…</div></div>
+      </section>
+
+      <section class="page terminal-page" id="terminal-view">
+        <header class="terminal-session-bar">
+          <label><span class="terminal-dot" id="terminal-dot"></span><select id="terminal-session" aria-label="终端会话"><option value="main">main</option></select></label>
+          <span id="terminal-connection">尚未连接</span>
+          <div class="terminal-session-actions"><button id="terminal-new" type="button" title="新建会话">＋</button><button id="terminal-delete" type="button" title="关闭当前会话">×</button><button id="terminal-reconnect" type="button" title="重新连接">↻</button></div>
+        </header>
+        <div class="terminal-stage"><div id="terminal-screen"></div><div class="terminal-empty" id="terminal-empty">正在准备终端…</div></div>
+        <div class="terminal-keys" aria-label="终端虚拟键盘">
+          <div class="terminal-key-row terminal-vim-keys">
+            <button class="primary-key" data-terminal-send="\u001b">Esc</button><button data-terminal-send="\u0003">C-c</button><button data-terminal-send="\u0017">C-w</button><button data-terminal-send=":w\r">:w</button><button data-terminal-send=":q\r">:q</button><button data-terminal-send=":wq\r">:wq</button><button data-terminal-send="gg">gg</button><button data-terminal-send="G">G</button><button data-terminal-send="dd">dd</button><button data-terminal-send="yy">yy</button><button data-terminal-send="p">p</button><button data-terminal-send="u">u</button><button data-terminal-send="\u0012">C-r</button><button id="terminal-paste" type="button">粘贴</button><button id="terminal-font-down" type="button">A−</button><button id="terminal-font-up" type="button">A＋</button>
+          </div>
+          <div class="terminal-keyboard" id="terminal-keyboard"></div>
+        </div>
       </section>
 
       <section class="page" id="xiaoai-view">
@@ -172,6 +203,8 @@
       <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
       <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
       <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
+      <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
+      <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
       <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
       <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
     </nav>
@@ -264,10 +297,15 @@
   </div>
 
   <div class="toast" id="toast" role="status"></div>
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/xterm-addon-fit.js"></script>
+  <script src="/vendor/xterm-addon-web-links.js"></script>
   <script type="module" src="/app.js"></script>
   <script type="module" src="/modules/speed-test/speed-test.js"></script>
   <script type="module" src="/modules/xiaoai-music/xiaoai-music.js"></script>
   <script type="module" src="/modules/xiaoai-assistant/xiaoai-assistant.js"></script>
   <script type="module" src="/modules/music-download/music-download.js"></script>
+  <script type="module" src="/modules/checklist/checklist.js"></script>
+  <script type="module" src="/modules/terminal/terminal.js"></script>
 </body>
 </html>

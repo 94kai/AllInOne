@@ -3,6 +3,8 @@ const icons = {
   folder: '<path d="M3 6.5h6l2 2h10v9.8a1.7 1.7 0 0 1-1.7 1.7H4.7A1.7 1.7 0 0 1 3 18.3z"/><path d="M3 9V5.7A1.7 1.7 0 0 1 4.7 4H9l2 2h7"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
   speed: '<path d="M4.2 18a9 9 0 1 1 15.6 0"/><path d="m12 15 4.5-5.5"/><circle cx="12" cy="15" r="1.5"/>',
+  checklist: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m7.5 8 1.5 1.5L12 6M14 8h3M7.5 14 9 15.5l3-3.5M14 14h3"/>',
+  terminal: '<path d="m5 7 4 5-4 5M11 17h8"/><rect x="2.5" y="3.5" width="19" height="17" rx="2"/>',
   refresh: '<path d="M20 6v5h-5"/><path d="M18.2 15a7 7 0 1 1-.3-6.3L20 11"/>',
   server: '<rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3M10 10h4v4h-4z"/>',
@@ -31,13 +33,13 @@ document.querySelectorAll('[data-icon]').forEach(node => {
   node.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[node.dataset.icon] || icons.file}</svg>`;
 });
 
-const allowedViews = ['home', 'files', 'speed', 'xiaoai', 'music'];
+const allowedViews = ['home', 'files', 'speed', 'checklist', 'terminal', 'xiaoai', 'music'];
 const urlView = new URLSearchParams(location.search).get('view');
 const storedView = localStorage.getItem('allinone-active-view');
 const state = { view: allowedViews.includes(urlView) ? urlView : allowedViews.includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const defaultNavOrder = ['home', 'files', 'speed', 'xiaoai', 'music'];
+const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'terminal', 'xiaoai', 'music'];
 function readNavOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('allinone-nav-order') || '[]');
@@ -148,8 +150,8 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
-  $('#refresh-button').hidden = state.view === 'music';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
+  $('#refresh-button').hidden = ['music', 'terminal'].includes(state.view);
   document.body.classList.toggle('xiaoai-active', state.view === 'xiaoai');
 }
 
@@ -176,6 +178,7 @@ function switchView(view) {
   setGreeting(); window.scrollTo({ top: 0, behavior: 'smooth' });
   if (view === 'home' && Date.now() - state.lastSystemUpdate > 60000) loadSystem();
   if (view === 'files' && !state.entries.length) loadFiles();
+  if (view === 'checklist') document.dispatchEvent(new CustomEvent('checklist:refresh'));
 }
 
 async function loadSystem() {
@@ -313,6 +316,7 @@ $('#refresh-button').addEventListener('click', () => {
   if (state.view === 'files') return loadFiles();
   if (state.view === 'links') return loadLinks();
   if (state.view === 'speed') return $('#speed-start').click();
+  if (state.view === 'checklist') return document.dispatchEvent(new CustomEvent('checklist:refresh'));
   if (state.view === 'xiaoai') return document.dispatchEvent(new CustomEvent('xiaoai-assistant:refresh'));
   const selectedTab = $('[data-music-tab].active')?.dataset.musicTab;
   document.dispatchEvent(new CustomEvent(selectedTab === 'downloads' ? 'music-download:refresh' : 'xiaoai:refresh'));
