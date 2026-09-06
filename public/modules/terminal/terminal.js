@@ -8,7 +8,7 @@ if (view) {
   const keyboard = document.querySelector('#terminal-keyboard');
   const fontKey = 'allinone-terminal-font-size';
   let socket = null, reconnectTimer = 0, reconnectAttempts = 0;
-  let ctrlPending = false, altPending = false, shiftPending = false, symbolLayer = false;
+  let ctrlPending = false, altPending = false, shiftPending = false;
   let fontSize = Math.max(11, Math.min(24, Number(localStorage.getItem(fontKey) || 14)));
 
   const terminal = new window.Terminal({
@@ -153,36 +153,34 @@ if (view) {
 
   const shiftedKeys = { '`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|', ';': ':', "'": '"', ',': '<', '.': '>', '/': '?' };
   // 标点位置与标准电脑键盘一致，Vim 中无需切层即可输入常用命令。
-  const letterRows = [['`','1','2','3','4','5','6','7','8','9','0','-','='], ['q','w','e','r','t','y','u','i','o','p','[',']','\\'], ['a','s','d','f','g','h','j','k','l',';',"'"], ['z','x','c','v','b','n','m',',','.','/']];
-  const symbolRows = [['`','~','!','@','#','$','%','^','&','*'], ['(',')','-','_','=','+','[',']','{','}'], [';',':',"'",'"',',','.','<','>','?','/'], ['\\','|','&','*','+','-','_','=']];
+  const letterRows = [['`','1','2','3','4','5','6','7','8','9','0','-','='], ['q','w','e','r','t','y','u','i','o','p','[',']','\\'], ['a','s','d','f','g','h','j','k','l',';'], ['z','x','c','v','b','n','m',',','.','/']];
   const escapeKey = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
   function keyButton(label, action, value = '', classes = '') {
     return `<button type="button" class="terminal-kb-key ${classes}" data-kb-action="${action}" data-kb-value="${escapeKey(value)}">${escapeKey(label)}</button>`;
   }
   function renderKeyboard() {
-    const rows = symbolLayer ? symbolRows : letterRows;
+    const rows = letterRows;
     const html = rows.map((row, rowIndex) => {
       const keys = row.map(key => {
         let value = key;
-        if (!symbolLayer && shiftPending) value = shiftedKeys[key] || key.toUpperCase();
+        if (shiftPending) value = shiftedKeys[key] || key.toUpperCase();
         return keyButton(value, 'send', value);
       });
       if (rowIndex === 0) keys.push(keyButton('⌫', 'send', '\\u007f', 'function wide repeat'));
       if (rowIndex === 1) keys.unshift(keyButton('Tab', 'send', '\\t', 'function wide'));
       if (rowIndex === 2) keys.push(keyButton('Enter', 'send', '\\r', 'enter'));
-      if (rowIndex === 3 && !symbolLayer) {
+      if (rowIndex === 3) {
         keys.unshift(keyButton(shiftPending ? '⇧' : 'Shift', 'shift', '', `function wide modifier${shiftPending ? ' active' : ''}`));
       }
       return `<div class="terminal-kb-row">${keys.join('')}</div>`;
     });
     const arrows = ['←','↓','↑','→'].map((label, index) => keyButton(label, 'send', ['\\u001b[D','\\u001b[B','\\u001b[A','\\u001b[C'][index], 'function repeat')).join('');
-    html.push(`<div class="terminal-kb-row">${keyButton(symbolLayer ? 'ABC' : '#+=', 'symbols', '', `function wide modifier${symbolLayer ? ' active' : ''}`)}${keyButton('Ctrl', 'ctrl', '', `function modifier${ctrlPending ? ' active' : ''}`)}${keyButton('Alt', 'alt', '', `function modifier${altPending ? ' active' : ''}`)}${keyButton('Space', 'send', ' ', 'space')}${arrows}</div>`);
+    html.push(`<div class="terminal-kb-row">${keyButton('Ctrl', 'ctrl', '', `function modifier${ctrlPending ? ' active' : ''}`)}${keyButton('Alt', 'alt', '', `function modifier${altPending ? ' active' : ''}`)}${keyButton('Space', 'send', ' ', 'space')}${arrows}</div>`);
     keyboard.innerHTML = html.join('');
   }
   function pressKeyboardKey(button) {
     const action = button.dataset.kbAction;
     if (action === 'shift') { shiftPending = !shiftPending; renderKeyboard(); return; }
-    if (action === 'symbols') { symbolLayer = !symbolLayer; shiftPending = false; renderKeyboard(); return; }
     if (action === 'ctrl') { ctrlPending = !ctrlPending; renderKeyboard(); return; }
     if (action === 'alt') { altPending = !altPending; renderKeyboard(); return; }
     let value = decodeKey(button.dataset.kbValue || '');
