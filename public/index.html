@@ -189,13 +189,11 @@
         </div>
 
         <div class="music-module-panel" data-music-panel="downloads" hidden>
-        <div class="download-hero">
-          <div><p class="eyebrow light">MUSIC DOWNLOAD</p><h2>搜索并保存音乐</h2><p id="download-directory">默认保存到下载目录</p></div>
-          <span class="download-service-state" id="download-service-state">正在检查组件</span>
-        </div>
-        <form class="download-search" id="download-search-form"><input id="download-query" type="search" maxlength="100" required placeholder="输入歌曲名或歌手，例如：搁浅 周杰伦" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
+        <header class="download-header"><div><h2>音乐下载</h2><p id="download-directory">默认保存到下载目录</p></div><span class="download-service-state" id="download-service-state">正在检查组件</span></header>
+        <div class="download-netease-bar"><div><strong id="download-netease-title">网易云账号</strong><span id="download-netease-state">正在检查登录状态</span></div><button class="secondary-button" id="download-netease-login" type="button">二维码登录</button><button class="secondary-button danger" id="download-netease-logout" type="button" hidden>退出</button></div>
+        <form class="download-search" id="download-search-form"><select id="download-quality" aria-label="网易云下载音质"><option value="exhigh">极高 320K</option><option value="lossless" selected>无损 FLAC</option><option value="hires">Hi-Res</option><option value="jymaster">超清母带</option><option value="standard">标准 128K</option></select><input id="download-query" type="search" maxlength="100" required placeholder="歌曲名或歌手" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
         <section class="download-section"><div class="download-section-heading"><div><h3>搜索结果</h3><span id="download-search-note">输入关键词开始搜索</span></div></div><div class="download-results" id="download-results"><div class="empty-state">暂时没有搜索结果</div></div></section>
-        <section class="download-section"><div class="download-section-heading"><div><h3>下载目录</h3><span id="download-library-note">正在读取</span></div><div class="download-heading-actions"><button class="secondary-button" id="download-destinations" type="button">目的地</button><button class="secondary-button" id="download-refresh" type="button">刷新</button></div></div><div class="download-player" id="download-player" hidden><div><strong id="download-player-title">正在试听</strong><button id="download-player-close" type="button" aria-label="关闭试听">×</button></div><audio id="download-player-audio" controls preload="metadata" crossorigin="use-credentials"></audio></div><div class="download-move-bar"><label><span>移动到</span><select id="download-move-root"></select></label><input id="download-move-path" maxlength="300" placeholder="可选多级子目录，例如：华语/周杰伦/专辑"><button class="primary-button" id="download-move" type="button" disabled>移动已选</button></div><div class="download-library" id="download-library"><div class="empty-state">下载目录为空</div></div></section>
+        <section class="download-section"><div class="download-section-heading"><div><h3>下载目录</h3><span id="download-library-note">正在读取</span></div><div class="download-heading-actions"><button class="secondary-button" id="download-destinations" type="button">目的地</button><button class="secondary-button" id="download-refresh" type="button">刷新</button></div></div><div class="download-player" id="download-player" hidden><div><strong id="download-player-title">正在试听</strong><button id="download-player-close" type="button" aria-label="关闭试听">×</button></div><audio id="download-player-audio" controls preload="metadata" crossorigin="use-credentials"></audio></div><div class="download-move-bar"><label><span>移动到</span><select id="download-move-root"></select></label><div class="download-path-field"><input id="download-move-path" maxlength="300" placeholder="根目录（也可手动输入）"><button class="secondary-button" id="download-browse" type="button">选择目录</button></div><button class="primary-button" id="download-move" type="button" disabled>移动已选</button></div><div class="download-library" id="download-library"><div class="empty-state">下载目录为空</div></div></section>
         </div>
       </section>
     </main>
@@ -295,6 +293,25 @@
       <p class="download-config-hint">格式为“名称:绝对路径”。根目录需要已经存在；移动时填写的子目录或多级子目录会自动创建。</p>
       <div class="form-actions"><button type="button" class="secondary-button" data-download-destinations-close>取消</button><button class="primary-button" type="submit">保存目的地</button></div>
     </form>
+  </div>
+
+  <div class="modal-backdrop" id="download-netease-modal" hidden>
+    <section class="form-panel download-netease-panel" role="dialog" aria-modal="true" aria-labelledby="download-netease-modal-title">
+      <header><div><p class="eyebrow">NETEASE LOGIN</p><h2 id="download-netease-modal-title">登录网易云</h2></div><button type="button" class="icon-button" data-download-netease-close><span data-icon="close"></span></button></header>
+      <div class="download-netease-qr"><img id="download-netease-qr-image" alt="网易云登录二维码"><strong id="download-netease-qr-state">正在生成二维码</strong><span>请使用网易云音乐 App 扫码并确认。若服务器网络被风控，可在下方导入网页版 Cookie。</span></div>
+      <label class="download-cookie-field">Cookie（后备方式）<textarea id="download-netease-cookie" rows="3" spellcheck="false" autocomplete="off" placeholder="粘贴包含 MUSIC_U 的完整 Cookie"></textarea></label>
+      <div class="form-actions"><button type="button" class="secondary-button" id="download-netease-new-qr">刷新二维码</button><button type="button" class="primary-button" data-download-netease-close>关闭</button></div>
+      <div class="download-cookie-action"><button type="button" class="secondary-button" id="download-netease-import">导入 Cookie</button></div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="download-directory-modal" hidden>
+    <section class="form-panel download-directory-panel" role="dialog" aria-modal="true" aria-labelledby="download-directory-title">
+      <header><div><p class="eyebrow">SELECT DIRECTORY</p><h2 id="download-directory-title">选择子目录</h2></div><button type="button" class="icon-button" data-download-directory-close><span data-icon="close"></span></button></header>
+      <div class="download-directory-current" id="download-directory-current">根目录</div>
+      <div class="download-directory-list" id="download-directory-list"><div class="empty-state">正在读取目录</div></div>
+      <div class="form-actions"><button type="button" class="secondary-button" id="download-directory-up">返回上级</button><span class="form-spacer"></span><button type="button" class="secondary-button" data-download-directory-close>取消</button><button type="button" class="primary-button" id="download-directory-select">选择这里</button></div>
+    </section>
   </div>
 
   <div class="toast" id="toast" role="status"></div>

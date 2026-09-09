@@ -151,9 +151,9 @@ if (view) {
   document.querySelector('#terminal-font-down').addEventListener('click', () => changeFont(-1));
   document.querySelector('#terminal-font-up').addEventListener('click', () => changeFont(1));
 
-  const shiftedKeys = { '`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|', ';': ':', "'": '"', ',': '<', '.': '>', '/': '?' };
+  const shiftedKeys = { '`': '~', '1': '!', '2': '@', '3': '#', '4': '$', '5': '%', '6': '^', '7': '&', '8': '*', '9': '(', '0': ')', '-': '_', '=': '+', '[': '{', ']': '}', ';': ':', "'": '"', ',': '<', '.': '>', '/': '?' };
   // 标点位置与标准电脑键盘一致，Vim 中无需切层即可输入常用命令。
-  const letterRows = [['`','1','2','3','4','5','6','7','8','9','0','-','='], ['q','w','e','r','t','y','u','i','o','p','[',']','\\'], ['a','s','d','f','g','h','j','k','l',';'], ['z','x','c','v','b','n','m',',','.','/']];
+  const letterRows = [['`','1','2','3','4','5','6','7','8','9','0','-','='], ['q','w','e','r','t','y','u','i','o','p','[',']'], ['a','s','d','f','g','h','j','k','l',';'], ['z','x','c','v','b','n','m',',','.','/']];
   const escapeKey = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
   function keyButton(label, action, value = '', classes = '') {
     return `<button type="button" class="terminal-kb-key ${classes}" data-kb-action="${action}" data-kb-value="${escapeKey(value)}">${escapeKey(label)}</button>`;
@@ -167,15 +167,18 @@ if (view) {
         return keyButton(value, 'send', value);
       });
       if (rowIndex === 0) keys.push(keyButton('⌫', 'send', '\\u007f', 'function wide repeat'));
-      if (rowIndex === 1) keys.unshift(keyButton('Tab', 'send', '\\t', 'function wide'));
-      if (rowIndex === 2) keys.push(keyButton('Enter', 'send', '\\r', 'enter'));
+      if (rowIndex === 1) keys.unshift(keyButton('Tab', 'send', '\\t', 'function'));
+      if (rowIndex === 2) {
+        keys.unshift(keyButton('Ctrl', 'ctrl', '', `function wide modifier${ctrlPending ? ' active' : ''}`));
+        keys.push(keyButton('↵', 'send', '\\r', 'enter'));
+      }
       if (rowIndex === 3) {
         keys.unshift(keyButton(shiftPending ? '⇧' : 'Shift', 'shift', '', `function wide modifier${shiftPending ? ' active' : ''}`));
       }
-      return `<div class="terminal-kb-row">${keys.join('')}</div>`;
+      return `<div class="terminal-kb-row terminal-kb-row-${rowIndex}">${keys.join('')}</div>`;
     });
     const arrows = ['←','↓','↑','→'].map((label, index) => keyButton(label, 'send', ['\\u001b[D','\\u001b[B','\\u001b[A','\\u001b[C'][index], 'function repeat')).join('');
-    html.push(`<div class="terminal-kb-row">${keyButton('Ctrl', 'ctrl', '', `function modifier${ctrlPending ? ' active' : ''}`)}${keyButton('Alt', 'alt', '', `function modifier${altPending ? ' active' : ''}`)}${keyButton('Space', 'send', ' ', 'space')}${arrows}</div>`);
+    html.push(`<div class="terminal-kb-row terminal-kb-row-bottom">${keyButton('Alt', 'alt', '', `function modifier${altPending ? ' active' : ''}`)}${keyButton('Space', 'send', ' ', 'space')}${arrows}</div>`);
     keyboard.innerHTML = html.join('');
   }
   function pressKeyboardKey(button) {

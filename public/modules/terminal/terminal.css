@@ -24,13 +24,16 @@
 .terminal-vim-keys button { height: 34px; color: #bdc8d5; font-size: 12px; }
 .terminal-keyboard { display: grid; gap: 4px; }
 .terminal-kb-row { display: flex; justify-content: center; gap: 4px; }
+.terminal-kb-row-1 { padding-left: 3px; }
+.terminal-kb-row-2 { padding-left: 11px; }
+.terminal-kb-row-3 { padding-left: 22px; }
 .terminal-kb-key { height: 37px; min-width: 0; flex: 1 1 0; padding: 0 1px; color: #f1f4f7; border: 1px solid #46515e; border-radius: 6px; background: #343e4a; box-shadow: 0 1px 0 #111820; font: 650 13px ui-monospace,SFMono-Regular,Menlo,monospace; touch-action: none; }
 .terminal-kb-key:active,.terminal-kb-key.pressed { transform: translateY(1px); background: #4b5867; box-shadow: none; }
 .terminal-kb-key.function { min-width: 30px; color: #cbd5df; background: #29323d; font-size: 11px; }
 .terminal-kb-key.modifier.active { color: #12202d; border-color: #8bc8ff; background: #6ab9ff; }
 .terminal-kb-key.space { flex-grow: 5; }
 .terminal-kb-key.wide { flex-grow: 1.55; }
-.terminal-kb-key.enter { flex-grow: 1.8; color: #fff; background: #405e85; }
+.terminal-kb-key.enter { flex-grow: 1.2; color: #fff; background: #405e85; }
 body.terminal-active { overflow: hidden; background: #0f141a; }
 body.terminal-active .topbar { display: none; }
 body.terminal-active .main-content { max-width: none; padding: 0; }

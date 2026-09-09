@@ -1,4 +1,4 @@
-const downloadState = { results: [], files: [], jobs: [], roots: [], polling: 0 };
+const downloadState = { results: [], files: [], jobs: [], roots: [], polling: 0, qrPolling: 0, qrId: '', directoryPath: '', directoryParent: null };
 const downloadNode = id => document.getElementById(id);
 const downloadApiBase = ({ 'devstudio.xuekai.top': 'https://aio.xuekai.top:8888' })[location.hostname]
   || (location.port === '8787' ? `${location.protocol}//${location.hostname}:2006` : '');
@@ -15,7 +15,7 @@ function formatDownloadDuration(value) { const seconds = Math.max(0, Math.round(
 function downloadToast(message) { const node = downloadNode('toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2500); }
 
 function renderDownloadResults() {
-  downloadNode('download-results').innerHTML = downloadState.results.map((song, index) => `<article class="download-song"><span class="download-source" title="来源：${escapeDownload(song.sourceLabel || song.source)}">${escapeDownload(song.sourceLabel || song.source || '未知')}</span><div class="download-song-info"><strong>${escapeDownload(song.name || '未命名歌曲')}</strong><span>${escapeDownload([song.artist,song.album].filter(Boolean).join(' · ') || '未知歌手')} · ${formatDownloadDuration(song.duration)}</span></div><button class="primary-button" data-download-result="${index}" type="button">下载</button></article>`).join('') || '<div class="empty-state">没有找到确认可下载的结果</div>';
+  downloadNode('download-results').innerHTML = downloadState.results.map((song, index) => `<article class="download-song"><span class="download-source ${song.source==='netease-auth'?'authorized':''}" title="来源：${escapeDownload(song.sourceLabel || song.source)}">${escapeDownload(song.sourceLabel || song.source || '未知')}</span><div class="download-song-info"><strong>${escapeDownload(song.name || '未命名歌曲')}</strong><span>${escapeDownload([song.artist,song.album].filter(Boolean).join(' · ') || '未知歌手')} · ${formatDownloadDuration(song.duration)}${song.actualQuality ? ` · ${escapeDownload(song.actualQuality.toUpperCase())} · ${escapeDownload((song.fileType||'').toUpperCase())}` : ''}</span></div><button class="primary-button" data-download-result="${index}" type="button">下载</button></article>`).join('') || '<div class="empty-state">没有找到确认可下载的结果</div>';
 }
 
 function renderDownloadLibrary() {
@@ -34,6 +34,9 @@ async function loadDownloadStatus() {
     const status = await downloadRequest('/api/modules/music-download/status');
     downloadNode('download-service-state').textContent = status.ready ? '搜索组件已就绪' : '首次搜索时自动安装组件';
     downloadNode('download-directory').textContent = `默认目录：${status.downloadDir}`;
+    downloadNode('download-netease-state').textContent = status.netease.loggedIn ? '已登录，搜索将优先使用会员音质' : status.netease.secureStorageReady ? '未登录，当前使用公开来源' : '缺少安全密钥，暂时不能登录';
+    downloadNode('download-netease-login').hidden = status.netease.loggedIn;
+    downloadNode('download-netease-logout').hidden = !status.netease.loggedIn;
     downloadState.roots = status.roots;
     downloadNode('download-move-root').innerHTML = status.roots.map(root => `<option value="${escapeDownload(root.id)}">${escapeDownload(root.label)}</option>`).join('');
   } catch (error) { downloadNode('download-service-state').textContent = '组件检查失败'; downloadToast(error.message); }
@@ -52,7 +55,7 @@ downloadNode('download-search-form').addEventListener('submit', async event => {
   event.preventDefault(); const query = downloadNode('download-query').value.trim(); if (!query) return;
   downloadNode('download-results').innerHTML = '<div class="empty-state">正在搜索多个音乐来源，首次使用可能需要安装组件…</div>';
   downloadNode('download-search-note').textContent = '正在搜索';
-  try { downloadState.results = (await downloadRequest(`/api/modules/music-download/search?q=${encodeURIComponent(query)}`)).items; renderDownloadResults(); downloadNode('download-search-note').textContent = `找到 ${downloadState.results.length} 条结果`; }
+  try { const quality = downloadNode('download-quality').value; downloadState.results = (await downloadRequest(`/api/modules/music-download/search?q=${encodeURIComponent(query)}&quality=${encodeURIComponent(quality)}`)).items; renderDownloadResults(); downloadNode('download-search-note').textContent = `找到 ${downloadState.results.length} 条结果`; }
   catch (error) { downloadNode('download-results').innerHTML = `<div class="empty-state">${escapeDownload(error.message)}</div>`; downloadNode('download-search-note').textContent = '搜索失败'; downloadToast(error.message); }
 });
 downloadNode('download-results').addEventListener('click', async event => {
@@ -114,7 +117,55 @@ downloadNode('download-move').addEventListener('click', async () => {
   try { const data = await downloadRequest('/api/modules/music-download/move', { method:'POST', body:JSON.stringify({ files, root:downloadNode('download-move-root').value, path:downloadNode('download-move-path').value }) }); downloadToast(`已移动 ${data.moved.length} 首歌曲`); await loadDownloads(); }
   catch (error) { downloadToast(error.message); }
 });
+async function loadMoveDirectories(relative = '') {
+  const root = downloadNode('download-move-root').value;
+  downloadNode('download-directory-list').innerHTML = '<div class="empty-state">正在读取目录</div>';
+  try {
+    const data = await downloadRequest(`/api/modules/music-download/directories?root=${encodeURIComponent(root)}&path=${encodeURIComponent(relative)}`);
+    downloadState.directoryPath = data.path; downloadState.directoryParent = data.parent;
+    downloadNode('download-directory-current').textContent = `${data.root.label} / ${data.path || '根目录'}`;
+    downloadNode('download-directory-up').disabled = data.parent === null;
+    downloadNode('download-directory-list').innerHTML = data.directories.map(name => `<button type="button" data-download-directory="${escapeDownload(name)}"><span>📁</span><strong>${escapeDownload(name)}</strong><span>›</span></button>`).join('') || '<div class="empty-state">这里没有子目录</div>';
+  } catch (error) { downloadNode('download-directory-list').innerHTML = `<div class="empty-state">${escapeDownload(error.message)}</div>`; }
+}
+function closeMoveDirectory() { downloadNode('download-directory-modal').hidden = true; document.body.style.overflow = ''; }
+downloadNode('download-browse').addEventListener('click', () => { downloadNode('download-directory-modal').hidden = false; document.body.style.overflow = 'hidden'; loadMoveDirectories(downloadNode('download-move-path').value.trim()); });
+downloadNode('download-directory-list').addEventListener('click', event => { const button = event.target.closest('[data-download-directory]'); if (!button) return; loadMoveDirectories([downloadState.directoryPath, button.dataset.downloadDirectory].filter(Boolean).join('/')); });
+downloadNode('download-directory-up').addEventListener('click', () => { if (downloadState.directoryParent !== null) loadMoveDirectories(downloadState.directoryParent); });
+downloadNode('download-directory-select').addEventListener('click', () => { downloadNode('download-move-path').value = downloadState.directoryPath; closeMoveDirectory(); });
+document.querySelectorAll('[data-download-directory-close]').forEach(button => button.addEventListener('click', closeMoveDirectory));
+downloadNode('download-directory-modal').addEventListener('click', event => { if (event.target === downloadNode('download-directory-modal')) closeMoveDirectory(); });
+downloadNode('download-move-root').addEventListener('change', () => { downloadNode('download-move-path').value = ''; });
 document.addEventListener('music-download:refresh', () => { loadDownloadStatus(); loadDownloads(); });
+
+function closeNeteaseLogin() { clearTimeout(downloadState.qrPolling); downloadState.qrPolling = 0; downloadNode('download-netease-modal').hidden = true; document.body.style.overflow = ''; }
+async function pollNeteaseQr() {
+  if (!downloadState.qrId || downloadNode('download-netease-modal').hidden) return;
+  try {
+    const result = await downloadRequest(`/api/modules/music-download/netease/qr?id=${encodeURIComponent(downloadState.qrId)}`);
+    downloadNode('download-netease-qr-state').textContent = result.state === 'confirming' ? '已扫码，请在 App 中确认' : result.state === 'authorized' ? '登录成功' : '等待扫码';
+    if (result.loggedIn) { setTimeout(closeNeteaseLogin, 700); await loadDownloadStatus(); downloadToast('网易云登录成功'); return; }
+    if (result.state === 'expired') return;
+    downloadState.qrPolling = setTimeout(pollNeteaseQr, 2000);
+  } catch (error) { downloadNode('download-netease-qr-state').textContent = error.message; }
+}
+async function createNeteaseQr() {
+  clearTimeout(downloadState.qrPolling); downloadNode('download-netease-qr-state').textContent = '正在生成二维码'; downloadNode('download-netease-qr-image').removeAttribute('src');
+  try { const { qr } = await downloadRequest('/api/modules/music-download/netease/qr', { method:'POST', body:'{}' }); downloadState.qrId = qr.id; downloadNode('download-netease-qr-image').src = qr.image; downloadNode('download-netease-qr-state').textContent = '等待扫码'; pollNeteaseQr(); }
+  catch (error) { downloadNode('download-netease-qr-state').textContent = error.message; downloadToast(error.message); }
+}
+downloadNode('download-netease-login').addEventListener('click', () => { downloadNode('download-netease-modal').hidden = false; document.body.style.overflow = 'hidden'; createNeteaseQr(); });
+downloadNode('download-netease-new-qr').addEventListener('click', createNeteaseQr);
+downloadNode('download-netease-import').addEventListener('click', async () => {
+  const cookie = downloadNode('download-netease-cookie').value.trim(); if (!cookie) return downloadToast('请先粘贴 Cookie');
+  const button = downloadNode('download-netease-import'); button.disabled = true; button.textContent = '正在验证';
+  try { await downloadRequest('/api/modules/music-download/netease/session', { method:'PUT', body:JSON.stringify({ cookie }) }); downloadNode('download-netease-cookie').value = ''; closeNeteaseLogin(); await loadDownloadStatus(); downloadToast('网易云登录成功'); }
+  catch (error) { downloadToast(error.message); }
+  finally { button.disabled = false; button.textContent = '导入 Cookie'; }
+});
+document.querySelectorAll('[data-download-netease-close]').forEach(button => button.addEventListener('click', closeNeteaseLogin));
+downloadNode('download-netease-modal').addEventListener('click', event => { if (event.target === downloadNode('download-netease-modal')) closeNeteaseLogin(); });
+downloadNode('download-netease-logout').addEventListener('click', async () => { if (!confirm('退出网易云账号并删除本机保存的登录状态吗？')) return; try { await downloadRequest('/api/modules/music-download/netease/session', { method:'DELETE' }); await loadDownloadStatus(); downloadToast('已退出网易云'); } catch (error) { downloadToast(error.message); } });
 
 async function openDownloadMetadata(filename) {
   downloadNode('download-metadata-form').reset(); downloadNode('download-metadata-file').value = filename; downloadNode('download-metadata-token').value = '';

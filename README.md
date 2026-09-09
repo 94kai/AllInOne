@@ -26,7 +26,7 @@
 
 小爱音乐模块还需要系统提供 Python 3 和 `ffprobe`。音乐核心与小爱 WebSocket/RPC 协议均已包含在当前项目中，不再依赖原来的 `XiaoAiMusic`、`XiaoAiMusicForNew` 目录；两个旧 PM2 应用也不需要再启动。
 
-音乐下载模块需要 `ffmpeg`。首次搜索时会按当前系统自动下载 `media-get 0.2.14` 到 `data/music-download/bin/`；也可通过 `MUSIC_MEDIA_GET_PATH` 使用自行安装的可执行文件。默认歌曲保存在 `data/music-download/downloads/`，可通过 `MUSIC_DOWNLOAD_DIR` 修改。批量移动目的地可直接在音乐下载页维护；首次使用默认读取 `MUSIC_MOVE_ROOTS=音乐:/mnt/music,归档:/mnt/archive`，未设置时复用 `FILE_ROOTS`。选择目的地后可填写多级子目录，不存在会自动创建。
+音乐下载模块需要 `ffmpeg`。首次搜索时会按当前系统自动下载 `media-get 0.2.14` 到 `data/music-download/bin/`；也可通过 `MUSIC_MEDIA_GET_PATH` 使用自行安装的可执行文件。登录网易云后可选择极高、无损、Hi-Res 或超清母带音质，搜索和下载使用账号实际拥有的权益；二维码被平台风控时可导入网页版中包含 `MUSIC_U` 的 Cookie。Cookie 使用 `NETEASE_COOKIE_SECRET`（未配置时回退 `DEVSTUDIO_TOKEN`）派生的密钥加密保存在模块数据目录，前端不会读取明文。未登录及其他音乐来源继续使用 `media-get`。默认歌曲保存在 `data/music-download/downloads/`，可通过 `MUSIC_DOWNLOAD_DIR` 修改。批量移动时可浏览目的地已有子目录并逐级选择，也可手动输入尚不存在的目录让系统自动创建。
 
 ```bash
 cp .env.example .env
@@ -92,7 +92,7 @@ PM2 已保存当前进程列表；系统启动时由 `pm2-xuekai.service` 恢复
 
 终端采用沉浸式全屏，顶部左侧返回按钮可退出终端并恢复主导航；退出页面只断开当前网页客户端，不会结束 tmux 会话中的任务。
 
-手机和平板使用页面内的完整 QWERTY 键盘，不再唤起系统键盘。默认层按电脑键盘排列，直接包含 `` ` - = [ ] \\ ; , . / ``，Shift 后得到对应上档符号；同时提供 Ctrl/Alt 一次性组合键、Tab、空格、回车、退格和方向键，退格及方向键可以长按连发。上方保留常用 Vim 命令快捷栏。单指在终端内上下拖动可浏览回滚内容。多行剪贴板内容发送前会确认，并使用终端的 bracketed paste 边界；桌面端仍可直接使用物理键盘。字号与上次会话保存在当前浏览器。
+手机和平板使用页面内的完整 QWERTY 键盘，不再唤起系统键盘。默认层按电脑键盘排列，Q、A、Z 三行逐级向右错位，Ctrl 位于 A 左侧，并直接包含 `` ` - = [ ] ; , . / ``，Shift 后得到对应上档符号；同时提供 Ctrl/Alt 一次性组合键、Tab、空格、回车、退格和方向键，退格及方向键可以长按连发。上方保留常用 Vim 命令快捷栏。单指在终端内上下拖动可浏览回滚内容。多行剪贴板内容发送前会确认，并使用终端的 bracketed paste 边界；桌面端仍可直接使用物理键盘。字号与上次会话保存在当前浏览器。
 
 可选配置 `TERMINAL_CWD` 指定新会话工作目录，未设置时使用第一个 `FILE_ROOTS`；`TERMINAL_MAX_SESSIONS` 默认为 8。终端继承 Allinone 进程用户的系统权限，不应将服务直接暴露到公网，建议使用 HTTPS、访问令牌和反向代理限速。
 

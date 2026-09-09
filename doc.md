@@ -248,18 +248,23 @@ Allinone 启动时创建并监管两个 worker，异常退出后 3 秒自动拉�
 公开接口：
 
 - `GET /api/modules/music-download/status`：返回组件状态、默认下载目录和可选移动根目录；不向搜索接口之外暴露平台凭据。
-- `GET /api/modules/music-download/search?q=...`：聚合搜索配置的来源，关键词限制为 1–100 字符；并发预解析候选资源，只返回能够解析到有效 HTTP/HTTPS 音频地址的结果，同时返回中文来源标签。
+- `POST/GET /api/modules/music-download/netease/qr`：创建网易云登录二维码、轮询扫码和确认状态，成功后仅在服务端保存登录 Cookie。
+- `PUT/DELETE /api/modules/music-download/netease/session`：导入包含 `MUSIC_U` 的网页版 Cookie，或退出并删除已保存的登录状态。
+- `GET /api/modules/music-download/search?q=...&quality=lossless`：聚合搜索配置的来源。登录后网易云结果通过账号授权 EAPI 按所选音质验证，其他来源继续由 `media-get` 解析。
 - `GET /api/modules/music-download/downloads`：列出默认目录内的音频文件和最近 30 个进程内任务。
 - `POST /api/modules/music-download/downloads`：校验 HTTP/HTTPS 来源页面后创建异步下载任务。
 - `GET /api/modules/music-download/audio?file=...`：流式试听默认下载目录中的音频，支持 HTTP Range 与拖动播放进度。
 - `DELETE /api/modules/music-download/downloads?file=...`：永久删除默认下载目录中的指定音频并清理对应元数据；页面必须二次确认。
 - `POST /api/modules/music-download/move`：将 1–200 个已下载音频批量移动到允许的根目录及其子目录。
+- `GET /api/modules/music-download/directories?root=...&path=...`：列出指定移动根目录下的直属文件夹，供移动端目录选择器逐级浏览；真实路径及符号链接目标不得越过配置根目录。
 - `GET/PUT /api/modules/music-download/config`：读取或保存 1–20 个移动目的地根目录；网页以每行 `名称:绝对路径` 的形式维护，保存到模块私有 `config.json`。
 - `GET /api/modules/music-download/metadata?file=...`：通过 `ffprobe` 读取下载目录内 MP3、FLAC、M4A 等音频的标签、编码、时长、码率和内嵌封面状态。
 - `PUT /api/modules/music-download/metadata`：使用 `ffmpeg` 原地重封装并写入歌曲名、歌手、专辑、年份、流派和音轨号；提交有效刮削令牌时同时写入候选封面。
 - `POST /api/modules/music-download/scrape`：以请求中当前编辑框的歌曲名和歌手为搜索条件，并结合文件时长排序，最多返回 8 个可选择候选；每个候选带有与当前文件绑定且 10 分钟有效的确认令牌。
 
-搜索和媒体页面解析由 `media-get 0.2.14` 子进程完成，格式转换使用系统 `ffmpeg`。模块最多同时执行两个下载任务；搜索超时 45 秒，单曲下载超时 10 分钟。临时文件放在系统临时目录，成功后才移动到默认下载目录。重名文件自动增加序号，不覆盖已有文件；跨文件系统移动会回退为复制成功后删除源文件。
+搜索和媒体页面解析由 `media-get 0.2.14` 子进程完成，格式转换使用系统 `ffmpeg`。搜索候选不仅要在元信息阶段解析出 HTTP/HTTPS 音频直链，还会通过小范围 HTTP 请求探测实际响应，返回 HTML/JSON 的伪音频结果不会展示；验证通过的短期直链会随候选交给下载任务。任务优先直接流式保存，直链失效时回退到来源页面重新解析。这避免网易云等页面二次解析返回非音频目标时触发上游 `target is not a binary` panic。直链响应拒绝 HTML/JSON、空内容及超过 1 GB 的文件。模块最多同时执行两个下载任务；搜索超时 45 秒，单曲下载超时 10 分钟。临时文件放在系统临时目录，成功后才移动到默认下载目录。重名文件自动增加序号，不覆盖已有文件；跨文件系统移动会回退为复制成功后删除源文件。
+
+网易云会员链路参考 MIT 许可的 [Suxiaoqinx/Netease_url](https://github.com/Suxiaoqinx/Netease_url)：服务端加密 EAPI 请求参数并携带账号 Cookie 获取临时播放地址，下载的是接口返回的 MP3/FLAC 等普通媒体文件，而不是解密 `.ncm`。搜索响应不包含 Cookie 或会员音频直链，创建任务后才由服务端重新获取地址。登录凭据以 AES-256-GCM 加密保存到 `data/music-download/netease-auth.json`（权限 0600），密钥来自 `NETEASE_COOKIE_SECRET`，未配置时回退到 `DEVSTUDIO_TOKEN`；两者均未配置时禁用登录保存。改变密钥会使已有登录状态不可读取，需要重新登录。二维码接口可能被网易云按服务器出口网络风控，此时可使用 Cookie 导入。
 
 首次使用且尚无网页配置时，目标根目录取自 `MUSIC_MOVE_ROOTS`，未设置则复用 `FILE_ROOTS`；之后可在音乐下载页“目的地”中维护，并持久化到 `data/music-download/config.json`。目的地根目录保存时必须已经存在；选定目的地后可以填写任意层级的相对子目录，移动时通过递归创建自动补齐，不存在则创建、已存在则直接使用。服务端只接受下载目录中实际存在的音频文件名，目标路径必须位于配置根目录内；客户端不能提交任意源路径或越过目标根目录。下载任务状态仅保存在内存，服务重启后历史任务不恢复，但已完成文件仍会正常列出。平台接口属于非稳定公开 Web 接口，单个来源可能因平台调整、地区、版权或付费限制而失败。
 
@@ -268,7 +273,7 @@ Allinone 启动时创建并监管两个 worker，异常退出后 3 秒自动拉�
 ## 移动端设计
 
 - 宽度不超过 680px 时切换为单行横向滚动的底部导航；入口较多时不压缩堆叠，当前入口自动滚动到可见位置，主要操作触控区域不小于 42px。手机长按导航项约 0.3 秒，出现震动和缩放反馈后可稍微上移手指再左右拖动；桌面按住导航项后拖动。顺序保存在当前浏览器的 `localStorage`，并在桌面侧栏和手机底栏之间同步。
-- 终端页面进入沉浸模式，隐藏通用大页头和手机底栏；顶部紧凑会话栏左侧保留返回概览的退出按钮，退出只断开 PTY 客户端，不结束 tmux 会话。粗指针设备将 xterm 输入框设为只读并声明手动虚拟键盘策略，不唤起系统键盘，输入全部由内置 QWERTY 键盘发送；默认层依照电脑键盘将常用标点放在字母周围，Shift 产生对应上档符号。Shift、Ctrl、Alt 是可见的一次性状态，退格和方向键支持长按连发，桌面物理键盘不受影响。终端区补充单指按行回滚，规避部分 Android WebView 无法滚动 xterm viewport 的问题。
+- 终端页面进入沉浸模式，隐藏通用大页头和手机底栏；顶部紧凑会话栏左侧保留返回概览的退出按钮，退出只断开 PTY 客户端，不结束 tmux 会话。粗指针设备将 xterm 输入框设为只读并声明手动虚拟键盘策略，不唤起系统键盘，输入全部由内置 QWERTY 键盘发送；默认层依照电脑键盘将 Q、A、Z 三行逐级右移，Ctrl 放在 A 左侧，并将常用标点放在字母周围，Shift 产生对应上档符号。Shift、Ctrl、Alt 是可见的一次性状态，退格和方向键支持长按连发，桌面物理键盘不受影响。终端区补充单指按行回滚，规避部分 Android WebView 无法滚动 xterm viewport 的问题。
 - 文件路径可横向滚动，文件列表隐藏次要日期信息，支持双列网格。
 - 预览和表单采用底部抽屉，兼容 `env(safe-area-inset-*)`。
 - 音视频使用原生控件，视频启用 `playsinline`，避免手机端不必要的强制全屏。
