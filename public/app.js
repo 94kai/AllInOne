@@ -6,7 +6,7 @@ const icons = {
   checklist: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m7.5 8 1.5 1.5L12 6M14 8h3M7.5 14 9 15.5l3-3.5M14 14h3"/>',
   pass: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h5M8 16h8"/><circle cx="17" cy="12" r="2"/>',
   terminal: '<path d="m5 7 4 5-4 5M11 17h8"/><rect x="2.5" y="3.5" width="19" height="17" rx="2"/>',
-  refresh: '<path d="M20 6v5h-5"/><path d="M18.2 15a7 7 0 1 1-.3-6.3L20 11"/>',
+  trash: '<path d="M4 7h16M9 3h6l1 4H8zM6 7l1 14h10l1-14M10 11v6M14 11v6"/>',
   server: '<rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3M10 10h4v4h-4z"/>',
   memory: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 10v4M11 10v4M15 10v4M19 10v4M6 4v3M10 4v3M14 4v3M18 4v3"/>',
@@ -152,7 +152,6 @@ function formatBytes(value) {
 
 function setGreeting() {
   $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
-  $('#refresh-button').hidden = ['music', 'terminal'].includes(state.view);
   document.body.classList.toggle('xiaoai-active', state.view === 'xiaoai');
 }
 
@@ -179,8 +178,8 @@ function switchView(view) {
   setGreeting(); window.scrollTo({ top: 0, behavior: 'smooth' });
   if (view === 'home' && Date.now() - state.lastSystemUpdate > 60000) loadSystem();
   if (view === 'files' && !state.entries.length) loadFiles();
-  if (view === 'beijing-pass') document.dispatchEvent(new CustomEvent('beijing-pass:refresh'));
   if (view === 'checklist') document.dispatchEvent(new CustomEvent('checklist:refresh'));
+  if (view === 'beijing-pass') document.dispatchEvent(new CustomEvent('beijing-pass:refresh'));
 }
 
 async function loadSystem() {
@@ -221,7 +220,7 @@ function renderFiles() {
   container.innerHTML = state.entries.map(entry => {
     const icon = icons[entry.type] || icons.file;
     const date = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(entry.modified));
-    return `<div class="file-row" data-file-path="${escapeHtml(entry.path)}" role="button" tabindex="0"><span class="file-main"><span class="file-icon ${entry.type}"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="file-name">${escapeHtml(entry.name)}</span></span><span class="file-size">${entry.type === 'folder' ? '文件夹' : formatBytes(entry.size)}</span><span class="file-date">${date}</span><button class="path-copy" type="button" data-copy-path="${escapeHtml(entry.absolutePath)}" aria-label="复制 ${escapeHtml(entry.name)} 的路径" title="复制路径"><svg viewBox="0 0 24 24">${icons.copy}</svg></button></div>`;
+    return `<div class="file-row" data-file-path="${escapeHtml(entry.path)}" role="button" tabindex="0"><span class="file-main"><span class="file-icon ${entry.type}"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="file-name">${escapeHtml(entry.name)}</span></span><span class="file-size">${entry.type === 'folder' ? '文件夹' : formatBytes(entry.size)}</span><span class="file-date">${date}</span><button class="path-copy" type="button" data-copy-path="${escapeHtml(entry.absolutePath)}" aria-label="复制 ${escapeHtml(entry.name)} 的路径" title="复制路径"><svg viewBox="0 0 24 24">${icons.copy}</svg></button><button class="file-delete" type="button" data-delete-path="${escapeHtml(entry.path)}" aria-label="删除 ${escapeHtml(entry.name)}" title="删除"><svg viewBox="0 0 24 24">${icons.trash}</svg></button></div>`;
   }).join('');
 }
 
@@ -245,7 +244,7 @@ async function loadFiles(nextPath = state.path) {
     const data = await request(`/api/files?${new URLSearchParams({ root: state.root, path: nextPath, hidden: state.showHidden ? '1' : '0' })}`);
     state.path = data.path; state.absolutePath = data.absolutePath; state.entries = data.entries; renderFiles();
     $('#copy-current-path').disabled = !state.absolutePath;
-    $('#file-hint').textContent = data.truncated ? '仅显示前 5000 项' : !state.showHidden && data.hiddenCount ? `已隐藏 ${data.hiddenCount} 项` : '安全只读模式';
+    $('#file-hint').textContent = data.truncated ? '仅显示前 5000 项' : !state.showHidden && data.hiddenCount ? `已隐藏 ${data.hiddenCount} 项` : '受控目录';
   } catch (error) { $('#file-list').innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`; toast(error.message); }
 }
 
@@ -313,16 +312,6 @@ async function initialize() {
 $$('[data-view]').forEach(node => node.addEventListener('click', () => switchView(node.dataset.view)));
 $$('[data-view-target]').forEach(node => node.addEventListener('click', () => switchView(node.dataset.viewTarget)));
 $$('[data-music-tab]').forEach(node => node.addEventListener('click', () => switchMusicTab(node.dataset.musicTab)));
-$('#refresh-button').addEventListener('click', () => {
-  if (state.view === 'home') return loadSystem();
-  if (state.view === 'files') return loadFiles();
-  if (state.view === 'links') return loadLinks();
-  if (state.view === 'speed') return $('#speed-start').click();
-  if (state.view === 'checklist') return document.dispatchEvent(new CustomEvent('checklist:refresh'));
-  if (state.view === 'xiaoai') return document.dispatchEvent(new CustomEvent('xiaoai-assistant:refresh'));
-  const selectedTab = $('[data-music-tab].active')?.dataset.musicTab;
-  document.dispatchEvent(new CustomEvent(selectedTab === 'downloads' ? 'music-download:refresh' : 'xiaoai:refresh'));
-});
 $('#root-select').addEventListener('change', event => { state.root = event.target.value; state.path = ''; state.entries = []; loadFiles(''); });
 $('#breadcrumbs').addEventListener('click', event => { const button = event.target.closest('[data-path]'); if (button) loadFiles(button.dataset.path); });
 $('#favorite-current').addEventListener('click', async () => {
@@ -344,13 +333,24 @@ $('#favorite-list').addEventListener('click', async event => {
   state.root = favorite.root; $('#root-select').value = favorite.root; state.entries = []; await loadFiles(favorite.path);
 });
 $('#file-list').addEventListener('click', event => {
+  const deleteButton = event.target.closest('[data-delete-path]');
+  if (deleteButton) {
+    event.stopPropagation();
+    const entry = state.entries.find(item => item.path === deleteButton.dataset.deletePath);
+    if (!entry || !confirm(`确定永久删除“${entry.name}”吗？${entry.type === 'folder' ? '文件夹内的全部内容也会被删除。' : ''}此操作不可恢复。`)) return;
+    deleteButton.disabled = true;
+    request(`/api/file?${new URLSearchParams({ root: state.root, path: entry.path })}`, { method: 'DELETE' })
+      .then(async () => { await Promise.all([loadFiles(), loadFavorites()]); toast('已删除'); })
+      .catch(error => { deleteButton.disabled = false; toast(error.message); });
+    return;
+  }
   const copy = event.target.closest('[data-copy-path]');
   if (copy) { event.stopPropagation(); copyPath(copy.dataset.copyPath); return; }
   const row = event.target.closest('[data-file-path]'); if (!row) return; const entry = state.entries.find(item => item.path === row.dataset.filePath);
   if (entry?.type === 'folder') loadFiles(entry.path); else if (entry) openPreview(entry);
 });
 $('#file-list').addEventListener('keydown', event => {
-  if (!['Enter', ' '].includes(event.key) || event.target.closest('[data-copy-path]')) return;
+  if (!['Enter', ' '].includes(event.key) || event.target.closest('button')) return;
   const row = event.target.closest('[data-file-path]'); if (!row) return; event.preventDefault(); row.click();
 });
 $('#copy-current-path').addEventListener('click', () => { if (state.absolutePath) copyPath(state.absolutePath); });

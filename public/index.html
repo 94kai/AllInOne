@@ -35,7 +35,6 @@
     <main class="main-content">
       <header class="topbar">
         <h1 id="page-title">概览</h1>
-        <button class="icon-button" id="refresh-button" aria-label="刷新当前页面" title="刷新"><span data-icon="refresh"></span></button>
       </header>
 
       <section class="page active" id="home-view">
@@ -64,7 +63,7 @@
           <button class="favorite-add" id="favorite-current"><span data-icon="plus"></span><span>收藏当前</span></button>
         </div>
         <div class="breadcrumbs" id="breadcrumbs" aria-label="当前路径"></div>
-        <div class="file-meta"><span id="file-count">正在读取…</span><span class="file-meta-actions"><button class="copy-current-path" id="copy-current-path" type="button" disabled><span data-icon="copy"></span><span>复制当前路径</span></button><span class="muted" id="file-hint">只读模式</span></span></div>
+        <div class="file-meta"><span id="file-count">正在读取…</span><span class="file-meta-actions"><button class="copy-current-path" id="copy-current-path" type="button" disabled><span data-icon="copy"></span><span>复制当前路径</span></button><span class="muted" id="file-hint">受控目录</span></span></div>
         <div class="file-list" id="file-list"></div>
       </section>
 
@@ -96,6 +95,7 @@
         <p class="checklist-hint" id="checklist-hint">自定义排序下，按住右侧把手拖动条目。</p>
         <div class="checklist-list" id="checklist-list"><div class="empty-state">正在读取清单…</div></div>
       </section>
+
       <section class="page beijing-pass-page" id="beijing-pass-view">
         <div class="bp-toolbar">
           <div><strong>进京证状态</strong><span id="bp-summary">点击查询获取最新状态</span></div>
@@ -109,7 +109,6 @@
         <div class="bp-result" id="bp-result"><div class="empty-state">尚未查询</div></div>
         <details class="bp-trace"><summary>凭据状态与查询链路</summary><div id="bp-meta">尚无运行记录</div></details>
       </section>
-
 
       <section class="page terminal-page" id="terminal-view">
         <header class="terminal-session-bar">
@@ -218,8 +217,8 @@
       <button class="nav-item active" data-view="home"><span data-icon="home"></span><span>概览</span></button>
       <button class="nav-item" data-view="files"><span data-icon="folder"></span><span>文件</span></button>
       <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
-      <button class="nav-item" data-view="beijing-pass"><span data-icon="pass"></span><span>进京证</span></button>
       <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
+      <button class="nav-item" data-view="beijing-pass"><span data-icon="pass"></span><span>进京证</span></button>
       <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
       <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
       <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
@@ -331,6 +330,7 @@
     </section>
   </div>
 
+  <div class="toast" id="toast" role="status"></div>
   <div class="modal-backdrop" id="bp-config-modal" hidden>
     <form class="form-panel bp-config-panel" id="bp-config-form">
       <header><div><p class="eyebrow">TOKEN CHAIN</p><h2>进京证接口配置</h2></div><button type="button" class="icon-button" data-bp-close><span data-icon="close"></span></button></header>
@@ -342,7 +342,6 @@
       <div class="form-actions"><button type="button" class="secondary-button" data-bp-close>取消</button><button type="submit" class="primary-button">保存配置</button></div>
     </form>
   </div>
-  <div class="toast" id="toast" role="status"></div>
   <script src="/vendor/xterm.js"></script>
   <script src="/vendor/xterm-addon-fit.js"></script>
   <script src="/vendor/xterm-addon-web-links.js"></script>
@@ -351,8 +350,8 @@
   <script type="module" src="/modules/xiaoai-music/xiaoai-music.js"></script>
   <script type="module" src="/modules/xiaoai-assistant/xiaoai-assistant.js"></script>
   <script type="module" src="/modules/music-download/music-download.js"></script>
-  <script type="module" src="/modules/beijing-pass/beijing-pass.js"></script>
   <script type="module" src="/modules/checklist/checklist.js"></script>
+  <script type="module" src="/modules/beijing-pass/beijing-pass.js"></script>
   <script type="module" src="/modules/terminal/terminal.js"></script>
 </body>
 </html>

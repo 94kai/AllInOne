@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { readFile, readdir, stat, realpath, mkdir, writeFile, rename, statfs } from 'node:fs/promises';
+import { readFile, readdir, stat, lstat, realpath, mkdir, writeFile, rename, rm, statfs } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -210,6 +210,24 @@ async function resolveSafePath(rootId, relativePath = '') {
     throw Object.assign(new Error('目标路径超出允许范围'), { status: 403 });
   }
   return { root, base, target: resolved, relative: path.relative(base, resolved).split(path.sep).join('/') };
+}
+
+async function resolveSafeDeletePath(rootId, relativePath = '') {
+  const root = roots.find(item => item.id === rootId);
+  if (!root) throw Object.assign(new Error('目录入口不存在'), { status: 404 });
+  const base = await realpath(root.path);
+  const requested = String(relativePath || '').replace(/^[/\\]+/, '');
+  if (!requested) throw Object.assign(new Error('不能删除文件入口根目录'), { status: 400 });
+  const lexicalTarget = path.resolve(base, requested);
+  if (!lexicalTarget.startsWith(`${base}${path.sep}`)) throw Object.assign(new Error('目标路径超出允许范围'), { status: 403 });
+  const parent = await realpath(path.dirname(lexicalTarget));
+  if (parent !== base && !parent.startsWith(`${base}${path.sep}`)) throw Object.assign(new Error('目标路径超出允许范围'), { status: 403 });
+  const target = path.join(parent, path.basename(lexicalTarget));
+  const info = await lstat(target).catch(cause => {
+    if (cause.code === 'ENOENT') throw Object.assign(new Error('文件或目录不存在'), { status: 404 });
+    throw cause;
+  });
+  return { root, base, target, info, relative: path.relative(base, target).split(path.sep).join('/') };
 }
 
 function classify(name, isDirectory) {
@@ -451,6 +469,7 @@ async function apiHandler(req, res, url) {
   if (await xiaoAiAssistant.handle(req, res, url)) return;
   if (await musicDownload.handle(req, res, url)) return;
   if (await checklist.handle(req, res, url)) return;
+  if (await beijingPass.handle(req, res, url)) return;
   if (await terminal.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
@@ -469,7 +488,6 @@ async function apiHandler(req, res, url) {
         return { name: entry.name, path: [current.relative, entry.name].filter(Boolean).join('/'), absolutePath: path.join(current.target, entry.name), type: classify(entry.name, info.isDirectory()), size: info.size, modified: info.mtime.toISOString() };
       } catch { return null; }
     }));
-  if (await beijingPass.handle(req, res, url)) return;
     files.sort((a, b) => (a?.type === 'folder' ? -1 : 1) - (b?.type === 'folder' ? -1 : 1) || a?.name.localeCompare(b?.name, 'zh-CN', { numeric: true }));
     return json(res, 200, { path: current.relative, absolutePath: current.target, truncated: entries.length > 5000, hiddenCount, entries: files.filter(Boolean) });
   }
@@ -477,6 +495,15 @@ async function apiHandler(req, res, url) {
     const file = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
     const ext = path.extname(file.target).toLowerCase();
     return serveFile(req, res, file.target, mimeTypes[ext] || 'application/octet-stream', url.searchParams.get('download') === '1' ? path.basename(file.target) : null);
+  }
+  if (url.pathname === '/api/file' && req.method === 'DELETE') {
+    const target = await resolveSafeDeletePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
+    await rm(target.target, { recursive: target.info.isDirectory() });
+    const favorites = await readFavorites();
+    const prefix = `${target.relative}/`;
+    const remaining = favorites.filter(item => item.root !== target.root.id || (item.path !== target.relative && !item.path.startsWith(prefix)));
+    if (remaining.length !== favorites.length) await saveFavorites(remaining);
+    return json(res, 200, { success: true });
   }
   if (url.pathname === '/api/text' && req.method === 'GET') {
     const file = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
@@ -620,6 +647,7 @@ await xiaoAiMusic.initialize();
 await xiaoAiAssistant.initialize();
 await musicDownload.initialize();
 await checklist.initialize();
+await beijingPass.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
   console.log(`文件入口：${roots.map(root => `${root.label} → ${root.path}`).join('，')}`);
@@ -637,4 +665,3 @@ async function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-await beijingPass.initialize();
