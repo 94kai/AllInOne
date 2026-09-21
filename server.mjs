@@ -13,6 +13,7 @@ import { XiaoAiAssistantModule } from './modules/xiaoai-assistant/index.mjs';
 import { MusicDownloadModule } from './modules/music-download/index.mjs';
 import { ChecklistModule } from './modules/checklist/index.mjs';
 import { TerminalModule } from './modules/terminal/index.mjs';
+import { BeijingPassModule } from './modules/beijing-pass/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
@@ -88,6 +89,7 @@ const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
 const xiaoAiAssistant = new XiaoAiAssistantModule({ dataDir, xiaoAiMusic });
 const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
 const checklist = new ChecklistModule({ dataDir });
+const beijingPass = new BeijingPassModule({ dataDir });
 
 function isAllowedWebSocketOrigin(req) {
   const origin = String(req.headers.origin || '');
@@ -467,6 +469,7 @@ async function apiHandler(req, res, url) {
         return { name: entry.name, path: [current.relative, entry.name].filter(Boolean).join('/'), absolutePath: path.join(current.target, entry.name), type: classify(entry.name, info.isDirectory()), size: info.size, modified: info.mtime.toISOString() };
       } catch { return null; }
     }));
+  if (await beijingPass.handle(req, res, url)) return;
     files.sort((a, b) => (a?.type === 'folder' ? -1 : 1) - (b?.type === 'folder' ? -1 : 1) || a?.name.localeCompare(b?.name, 'zh-CN', { numeric: true }));
     return json(res, 200, { path: current.relative, absolutePath: current.target, truncated: entries.length > 5000, hiddenCount, entries: files.filter(Boolean) });
   }
@@ -634,3 +637,4 @@ async function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+await beijingPass.initialize();

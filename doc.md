@@ -118,6 +118,16 @@ macOS 外置磁盘通常位于 `/Volumes`，Linux/NAS 挂载目录通常位于 `
 
 ## 数据流与接口
 
+### 进京证
+
+模块后端位于 `modules/beijing-pass/`，前端位于 `public/modules/beijing-pass/`，私有配置和运行观测时间保存在 `data/beijing-pass/config.json`。已验证 `getSsoUserToken` 的响应 `data` 是状态接口 Auth，而 `getUserByuId` 只返回用户和角色资料、没有 Token，因此自动链路简化为“状态接口直查 → 使用 JWT 换取状态 Auth 后重试”。结果按车辆和进京证记录渲染业务卡片，显示办理状态、有效期、类型、申请时间和额度等字段，不向普通结果区输出原始 JSON。接口调用链默认折叠，展开后以两张卡片显示接口地址、脱敏凭据和备用/使用/失败状态，并高亮本次最终查询路径。每次查询记录最近查询、成功、状态 Auth 更新时间和最终成功路径，便于观察凭据的实际寿命；不运行后台轮询任务。
+
+- `GET /api/modules/beijing-pass/config`：读取固定的状态查询、Token 换取接口地址，以及状态 Auth 和换取用 JWT；接口地址在页面只读展示，便于以后定位抓包请求。
+- `PUT /api/modules/beijing-pass/config`：只更新状态 Auth 和换取用 JWT，服务端忽略且不接受通过该接口改变上游地址。响应只在已通过 Allinone 鉴权的配置页使用。
+- `POST /api/modules/beijing-pass/state`：执行状态查询及必要的凭据刷新，返回上游业务数据、成功链路和降级错误摘要。
+
+上游响应字段尚无正式契约，模块会优先从包含 `token`、`auth`、`user_key` 的字段中递归提取换取结果。若真实响应结构与此不同，应根据几天运行记录补充精确字段映射。外部交通管理接口并非稳定公开 API，协议或风控变化只会使本模块报错，不影响其他模块启动。
+
 ### 文件管理
 
 - `GET /api/config`：返回公开的根目录 ID 和名称，不向浏览器暴露服务器真实路径。
