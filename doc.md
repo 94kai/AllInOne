@@ -8,7 +8,8 @@ allinone 定位为 NAS 的统一轻量控制台，界面包含五个稳定入口
 2. **文件**：浏览被授权的文件根目录并预览内容。
 3. **测速**：按需测试浏览器与 Allinone 服务之间的上传、下载链路速度。
 4. **清单**：维护可反复勾选恢复的出行物品清单，并支持拼音和自定义排序。
-5. **音乐**：在同一个主导航入口内切换“小爱播放”和“音乐下载”；前者搜索本地曲库并控制两台小爱音箱，后者从多个公开来源搜索歌曲、下载到暂存目录并批量移动到受控音乐目录。
+5. **网络守护**：监控当前 ShellCrash 节点访问 ChatGPT 的能力，按连续失败阈值自动选择可用线路。
+6. **音乐**：在同一个主导航入口内切换“小爱播放”和“音乐下载”；前者搜索本地曲库并控制两台小爱音箱，后者从多个公开来源搜索歌曲、下载到暂存目录并批量移动到受控音乐目录。
 
 后续的小工具和迁移进来的程序可以继续作为同级模块扩展，避免把所有功能塞进首页。
 
@@ -48,6 +49,8 @@ shared/                     # 经明确设计的通用服务，不放业务状�
 ## 界面布局原则
 
 功能页采用移动端优先的紧凑布局。主框架顶部已经展示当前页面标题，因此模块内部默认不重复使用大型 Hero、渐变横幅或只起装饰作用的首屏卡片；摘要信息应使用紧凑状态行，核心输入、筛选和主要操作优先进入手机首屏。大型头部仅用于品牌首页、承载不可替代的重要总览，或用户明确要求的场景。
+
+全局视觉变量和原有结构样式位于 `public/styles.css`，最后加载的 `public/theme.css` 作为统一主题层，负责中性色板、排版、间距、圆角、阴影、交互焦点以及各模块公共表面。业务模块仍可在自己的 CSS 中定义专属布局，主题层只统一视觉，不读取或改写模块状态。手机端使用带安全区适配的悬浮底部导航；桌面端使用半透明固定侧栏。当前保持浅色外观，系统深色模式不会自动改变页面配色。
 
 ## 目录结构
 
@@ -92,6 +95,7 @@ allinone/
 | `FILE_ROOTS` | `Home:运行用户主目录` | 逗号分隔的 `名称:绝对路径` |
 | `TEXT_PREVIEW_LIMIT` | `524288` | 文本预览字节上限 |
 | `SMARTCTL_PATH` | `/usr/sbin/smartctl` | 硬盘 SMART 温度读取程序或受控包装脚本路径 |
+| `SHELLCRASH_CONFIG_PATH` | `/etc/ShellCrash/config.yaml` | ShellCrash 运行配置路径，用于服务端读取控制地址和密钥 |
 | `XIAOAI_PYTHON` | `python3` | 小爱音乐 worker 使用的 Python 3 可执行文件 |
 | `MUSIC_DOWNLOAD_DIR` | `data/music-download/downloads` | 音乐下载模块的默认暂存目录 |
 | `MUSIC_MOVE_ROOTS` | 复用 `FILE_ROOTS` | 允许批量移动到的根目录，格式为 `名称:绝对路径`，多个用逗号分隔 |
@@ -120,13 +124,19 @@ macOS 外置磁盘通常位于 `/Volumes`，Linux/NAS 挂载目录通常位于 `
 
 ### 进京证
 
-模块后端位于 `modules/beijing-pass/`，前端位于 `public/modules/beijing-pass/`，私有配置和运行观测时间保存在 `data/beijing-pass/config.json`。已验证 `getSsoUserToken` 的响应 `data` 是状态接口 Auth，而 `getUserByuId` 只返回用户和角色资料、没有 Token，因此自动链路简化为“状态接口直查 → 使用 JWT 换取状态 Auth 后重试”。结果按车辆和进京证记录渲染业务卡片，显示办理状态、有效期、类型、申请时间和额度等字段，不向普通结果区输出原始 JSON。接口调用链默认折叠，展开后以两张卡片显示接口地址、脱敏凭据和备用/使用/失败状态，并高亮本次最终查询路径。每次查询记录最近查询、成功、状态 Auth 更新时间和最终成功路径，便于观察凭据的实际寿命；不运行后台轮询任务。
+模块后端位于 `modules/beijing-pass/`，前端位于 `public/modules/beijing-pass/`，私有配置和运行观测时间保存在 `data/beijing-pass/config.json`。已验证 `getSsoUserToken` 的响应 `data` 是状态接口 Auth，而 `getUserByuId` 只返回用户和角色资料、没有 Token，因此自动链路简化为“状态接口直查 → 使用 JWT 换取状态 Auth 后重试”。结果按车辆和进京证记录渲染业务卡片，显示办理状态、有效期、类型、申请时间和额度等字段，不向普通结果区输出原始 JSON。接口调用链默认折叠，展开后以两张卡片显示接口地址、脱敏凭据和备用/使用/失败状态，并高亮本次最终查询路径。每次查询记录最近查询、成功、状态 Auth 更新时间和最终成功路径，便于观察凭据的实际寿命。
 
-- `GET /api/modules/beijing-pass/config`：读取固定的状态查询、Token 换取接口地址，以及状态 Auth 和换取用 JWT；接口地址在页面只读展示，便于以后定位抓包请求。
-- `PUT /api/modules/beijing-pass/config`：只更新状态 Auth 和换取用 JWT，服务端忽略且不接受通过该接口改变上游地址。响应只在已通过 Allinone 鉴权的配置页使用。
+- `GET /api/modules/beijing-pass/config`：读取固定的状态查询、Token 换取接口地址，以及状态 Auth、换取用 JWT、Server酱 SendKey 和当前内存轮询状态；接口地址在页面只读展示，便于以后定位抓包请求。
+- `PUT /api/modules/beijing-pass/config`：只更新状态 Auth、换取用 JWT 和可选 Server酱 SendKey，服务端忽略且不接受通过该接口改变上游地址。响应只在已通过 Allinone 鉴权的配置页使用。
 - `POST /api/modules/beijing-pass/state`：执行状态查询及必要的凭据刷新，返回上游业务数据、成功链路和降级错误摘要。
+- `GET /api/modules/beijing-pass/prepare`：只读调用 `getUserIdInfo`、`getJsrxx` 和状态接口，返回脱敏驾驶人资料、车辆详情、办理额度、固定目的地摘要及本次状态查询结果；进入 Tab 时前端用这一次请求同时渲染状态和办理准备，不调用 `insertApplyRecord`，也不启动轮询。
+- `POST /api/modules/beijing-pass/apply`：接收车辆 ID、类型、生效日期及明确确认标志，重新读取状态、车辆和驾驶人资料并校验后，使用服务器私有固定目的地调用 `insertApplyRecord`。请求不自动重试。
+
+只有 `apply` 收到上游提交成功响应后才会创建内存轮询任务；普通查询和读取资料都不会启动轮询。任务每分钟查询一次，最多 15 次，服务重启即取消且不恢复。发现对应记录已不是“审核中”时立即停止，并通过 Server酱发送一次最终结果；达到上限仍未取得最终结果或查询持续失败时也发送一次停止通知。SendKey 可在鉴权后的接口配置页编辑，或使用 `BEIJING_PASS_SERVERCHAN_SENDKEY` 环境变量；未配置时仍轮询，但只在页面显示通知未配置。
 
 上游响应字段尚无正式契约，模块会优先从包含 `token`、`auth`、`user_key` 的字段中递归提取换取结果。若真实响应结构与此不同，应根据几天运行记录补充精确字段映射。外部交通管理接口并非稳定公开 API，协议或风控变化只会使本模块报错，不影响其他模块启动。
+
+办理链路已验证当前 UUID Auth 可直接访问 `/pro/vehicleController/getUserIdInfo`、`/pro/applyRecordController/getJsrxx` 和 `/pro//applyRecordController/insertApplyRecord`。固定目的地、行政区代码、经纬度及进京目的保存在 Git 忽略的 `data/beijing-pass/apply-defaults.json`，不进入源码。真实提交会消耗额度，页面展示完整摘要并要求用户明确二次确认；服务端拒绝已有审核中、生效中或待生效记录的车辆，并按 `ylzsfkb`/`elzsfkb` 校验类型资格。网络超时等结果不明确的情况不会自动重试，用户必须先查询状态。
 
 ### 文件管理
 
@@ -175,6 +185,19 @@ Linux CPU/NVMe 温度优先从 `sensors -j` 读取，SATA/USB 硬盘温度通过
 前端先测试下载、再测试上传，每一阶段通常持续约 4 秒并以 `MB/s` 实时显示估算值；用户可随时停止。单轮下载从 2 MB 预热数据开始，随后使用 8 MB 数据块；上传使用浏览器内存生成的 4 MB 随机数据块，避免压缩代理影响结果。完整测试约产生 6–90 MB 传输量。结果表示浏览器到当前 Allinone 服务（包括中间反向代理）的实际链路吞吐量，不等同于运营商公网测速；反向代理若启用了额外缓存、限速或缓冲也会影响结果。
 
 模块责任边界：后端位于 `modules/speed-test/`，仅负责生成/接收临时字节流；前端位于 `public/modules/speed-test/`，独立管理测速运行状态、取消控制与结果展示。模块无配置项、无持久化数据、无定时器或后台任务，也不读写其他模块状态。
+
+### ShellCrash 网络守护
+
+模块后端位于 `modules/shellcrash/`，前端位于 `public/modules/shellcrash/`，持久化状态位于 `data/shellcrash/state.json`。模块只通过 Mihomo `external-controller` 公开 API 查询代理组、测试指定节点和切换节点，不修改 ShellCrash YAML 或订阅文件。控制接口密钥从 `SHELLCRASH_CONFIG_PATH` 读取，仅保存在服务端内存中，不通过 Allinone API 返回。
+
+守护默认启用，每 180 秒通过当前节点检测 `https://chatgpt.com/cdn-cgi/trace`。连续失败 3 次后，以每批 8 个的并发度测试当前代理组内的真实节点，过滤 DIRECT、REJECT 和订阅提示条目，然后切换到检测成功且延迟最低的节点。切换后默认冷却 600 秒；冷却期间仍检测和记录失败，但不再次切换。定时器使用非阻塞生命周期，Allinone 关闭时会清理；ShellCrash 不可用、配置无法读取或所有节点失败只会更新本模块错误状态。
+
+接口：
+
+- `GET /api/modules/shellcrash`：读取公开配置、当前节点、候选节点、运行状态和最近 30 条记录，不返回控制密钥。
+- `POST /api/modules/shellcrash/check`：立即检测；若当前节点失败且不在冷却期，则立刻执行候选测试和自动切换。
+- `POST /api/modules/shellcrash/switch`：校验目标属于当前代理组后手动切换，并进入冷却期。
+- `PUT /api/modules/shellcrash/config`：更新启用状态、60–3600 秒检测间隔、1–10 次失败阈值及 60–86400 秒冷却期。
 
 ### 出行清单
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f4f6f8">
+  <meta name="theme-color" content="#f7f7f5">
   <title>Allinone</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/modules/speed-test/speed-test.css">
@@ -12,8 +12,10 @@
   <link rel="stylesheet" href="/modules/music-download/music-download.css">
   <link rel="stylesheet" href="/modules/checklist/checklist.css">
   <link rel="stylesheet" href="/modules/beijing-pass/beijing-pass.css">
+  <link rel="stylesheet" href="/modules/shellcrash/shellcrash.css">
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/modules/terminal/terminal.css">
+  <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
   <div class="app-shell">
@@ -25,6 +27,7 @@
         <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
         <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
         <button class="nav-item" data-view="beijing-pass"><span data-icon="pass"></span><span>进京证</span></button>
+        <button class="nav-item" data-view="shellcrash"><span data-icon="shield"></span><span>网络守护</span></button>
         <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
         <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
         <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
@@ -107,7 +110,40 @@
           <div class="bp-interface-flow" id="bp-interface-flow"><div class="empty-state">正在读取接口配置…</div></div>
         </details>
         <div class="bp-result" id="bp-result"><div class="empty-state">尚未查询</div></div>
+        <section class="bp-prepare-section">
+          <div class="bp-prepare-heading"><div><strong>办理准备</strong><span>仅读取资料，不会提交申请</span></div><button class="secondary-button" id="bp-prepare" type="button">读取办理资料</button></div>
+          <div id="bp-prepare-content"><div class="empty-state">读取后可核对车辆、驾驶人、日期和进京证类型</div></div>
+        </section>
         <details class="bp-trace"><summary>凭据状态与查询链路</summary><div id="bp-meta">尚无运行记录</div></details>
+      </section>
+
+      <section class="page shellcrash-page" id="shellcrash-view">
+        <div class="sc-status-card">
+          <div class="sc-status-main"><span class="sc-status-dot" id="sc-status-dot"></span><div><span>ChatGPT 连通状态</span><strong id="sc-status-title">正在读取</strong><small id="sc-status-detail">连接 ShellCrash 控制接口</small></div></div>
+          <button class="primary-button" id="sc-check" type="button">立即检测</button>
+        </div>
+        <div class="sc-metrics">
+          <article><span>当前节点</span><strong id="sc-current">--</strong><small id="sc-node-count">-- 个候选节点</small></article>
+          <article><span>最近延迟</span><strong id="sc-delay">--</strong><small id="sc-last-check">尚未检测</small></article>
+          <article><span>连续失败</span><strong id="sc-failures">0</strong><small id="sc-next-check">等待计划</small></article>
+        </div>
+        <div class="sc-layout">
+          <section class="sc-panel">
+            <div class="sc-panel-heading"><div><strong>自动守护</strong><span>连续失败后自动选择可访问 ChatGPT 的最低延迟节点</span></div><label class="sc-toggle"><input id="sc-enabled" type="checkbox"><span></span></label></div>
+            <div class="sc-settings">
+              <label>检测间隔<select id="sc-interval"><option value="60">1 分钟</option><option value="180">3 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟</option></select></label>
+              <label>失败阈值<select id="sc-threshold"><option value="1">1 次</option><option value="2">2 次</option><option value="3">3 次</option><option value="5">5 次</option></select></label>
+              <label>切换冷却<select id="sc-cooldown"><option value="300">5 分钟</option><option value="600">10 分钟</option><option value="1800">30 分钟</option><option value="3600">1 小时</option></select></label>
+            </div>
+            <button class="secondary-button sc-save" id="sc-save" type="button">保存守护设置</button>
+          </section>
+          <section class="sc-panel">
+            <div class="sc-panel-heading"><div><strong>手动切换</strong><span>只显示真实代理节点，不包含 DIRECT 和提示条目</span></div></div>
+            <div class="sc-switch-row"><select id="sc-node-select" aria-label="选择代理节点"><option>正在读取节点</option></select><button class="secondary-button" id="sc-switch" type="button">切换</button></div>
+            <p class="sc-warning">切换会立即改变当前网络出口；自动守护仅在 ChatGPT 检测失败时操作此代理组。</p>
+          </section>
+        </div>
+        <section class="sc-panel sc-history-panel"><div class="sc-panel-heading"><div><strong>检测记录</strong><span>保留最近 30 条成功、失败与切换记录</span></div></div><div class="sc-history" id="sc-history"><div class="empty-state">暂无记录</div></div></section>
       </section>
 
       <section class="page terminal-page" id="terminal-view">
@@ -219,6 +255,7 @@
       <button class="nav-item" data-view="speed"><span data-icon="speed"></span><span>测速</span></button>
       <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
       <button class="nav-item" data-view="beijing-pass"><span data-icon="pass"></span><span>进京证</span></button>
+      <button class="nav-item" data-view="shellcrash"><span data-icon="shield"></span><span>网络守护</span></button>
       <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
       <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
       <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
@@ -339,6 +376,8 @@
       <label>状态接口 Auth（可编辑）<textarea name="stateAuth" rows="2" required spellcheck="false"></textarea></label>
       <label>Auth 换取接口（只读）<input name="ssoUrl" type="url" readonly tabindex="-1"></label>
       <label>换取接口 JWT（可编辑）<textarea name="ssoAuth" rows="3" required spellcheck="false"></textarea></label>
+      <label>Server酱 SendKey（可选）<input name="serverChanSendKey" type="password" autocomplete="off" placeholder="SCT..."></label>
+      <p class="bp-config-note">提交成功后每分钟查询一次，最多 15 次。查到最终状态或轮询停止时，通过 Server酱推送一次。</p>
       <div class="form-actions"><button type="button" class="secondary-button" data-bp-close>取消</button><button type="submit" class="primary-button">保存配置</button></div>
     </form>
   </div>
@@ -352,6 +391,7 @@
   <script type="module" src="/modules/music-download/music-download.js"></script>
   <script type="module" src="/modules/checklist/checklist.js"></script>
   <script type="module" src="/modules/beijing-pass/beijing-pass.js"></script>
+  <script type="module" src="/modules/shellcrash/shellcrash.js"></script>
   <script type="module" src="/modules/terminal/terminal.js"></script>
 </body>
 </html>

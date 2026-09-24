@@ -14,6 +14,7 @@ import { MusicDownloadModule } from './modules/music-download/index.mjs';
 import { ChecklistModule } from './modules/checklist/index.mjs';
 import { TerminalModule } from './modules/terminal/index.mjs';
 import { BeijingPassModule } from './modules/beijing-pass/index.mjs';
+import { ShellCrashModule } from './modules/shellcrash/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
@@ -90,6 +91,7 @@ const xiaoAiAssistant = new XiaoAiAssistantModule({ dataDir, xiaoAiMusic });
 const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
 const checklist = new ChecklistModule({ dataDir });
 const beijingPass = new BeijingPassModule({ dataDir });
+const shellCrash = new ShellCrashModule({ dataDir });
 
 function isAllowedWebSocketOrigin(req) {
   const origin = String(req.headers.origin || '');
@@ -470,6 +472,7 @@ async function apiHandler(req, res, url) {
   if (await musicDownload.handle(req, res, url)) return;
   if (await checklist.handle(req, res, url)) return;
   if (await beijingPass.handle(req, res, url)) return;
+  if (await shellCrash.handle(req, res, url)) return;
   if (await terminal.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
@@ -648,6 +651,7 @@ await xiaoAiAssistant.initialize();
 await musicDownload.initialize();
 await checklist.initialize();
 await beijingPass.initialize();
+await shellCrash.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
   console.log(`文件入口：${roots.map(root => `${root.label} → ${root.path}`).join('，')}`);
@@ -660,6 +664,8 @@ async function shutdown() {
   shuttingDown = true;
   httpServer.close();
   terminal.shutdown();
+  beijingPass.shutdown();
+  shellCrash.shutdown();
   await xiaoAiMusic.shutdown();
   process.exit(0);
 }
