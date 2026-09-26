@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/modules/checklist/checklist.css">
   <link rel="stylesheet" href="/modules/beijing-pass/beijing-pass.css">
   <link rel="stylesheet" href="/modules/shellcrash/shellcrash.css">
+  <link rel="stylesheet" href="/modules/bill-manager/bill-manager.css">
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/modules/terminal/terminal.css">
   <link rel="stylesheet" href="/theme.css">
@@ -28,6 +29,7 @@
         <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
         <button class="nav-item" data-view="beijing-pass"><span data-icon="pass"></span><span>进京证</span></button>
         <button class="nav-item" data-view="shellcrash"><span data-icon="shield"></span><span>网络守护</span></button>
+        <button class="nav-item" data-view="bill-manager"><span data-icon="receipt"></span><span>账单</span></button>
         <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
         <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
         <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
@@ -38,6 +40,7 @@
     <main class="main-content">
       <header class="topbar">
         <h1 id="page-title">概览</h1>
+        <button class="primary-button" id="bm-export" type="button" hidden>统一导出</button>
       </header>
 
       <section class="page active" id="home-view">
@@ -55,6 +58,9 @@
         <div class="file-toolbar">
           <label class="root-select"><span data-icon="database"></span><select id="root-select" aria-label="文件入口"></select><span data-icon="chevron"></span></label>
           <div class="view-actions">
+            <input id="file-upload-input" type="file" multiple hidden>
+            <button class="icon-button" id="folder-create" type="button" aria-label="新建文件夹" title="新建文件夹"><span data-icon="folder-plus"></span></button>
+            <button class="icon-button" id="file-upload" type="button" aria-label="上传文件" title="上传文件"><span data-icon="upload"></span></button>
             <button class="icon-button" id="hidden-mode" aria-label="显示隐藏项" aria-pressed="false" title="显示隐藏项"><span data-icon="eye"></span></button>
             <button class="icon-button active" id="list-mode" aria-label="列表视图"><span data-icon="list"></span></button>
             <button class="icon-button" id="grid-mode" aria-label="网格视图"><span data-icon="grid"></span></button>
@@ -66,6 +72,7 @@
           <button class="favorite-add" id="favorite-current"><span data-icon="plus"></span><span>收藏当前</span></button>
         </div>
         <div class="breadcrumbs" id="breadcrumbs" aria-label="当前路径"></div>
+        <div class="file-upload-status" id="file-upload-status" hidden><div><strong id="file-upload-title">正在上传</strong><span id="file-upload-detail"></span></div><progress id="file-upload-progress" max="100" value="0"></progress><button id="file-upload-cancel" type="button">取消</button></div>
         <div class="file-meta"><span id="file-count">正在读取…</span><span class="file-meta-actions"><button class="copy-current-path" id="copy-current-path" type="button" disabled><span data-icon="copy"></span><span>复制当前路径</span></button><span class="muted" id="file-hint">受控目录</span></span></div>
         <div class="file-list" id="file-list"></div>
       </section>
@@ -86,6 +93,12 @@
           <article class="speed-result-card" id="speed-upload-card"><div class="speed-result-icon upload"><span data-icon="download"></span></div><h3>上传速度</h3><strong id="speed-upload-value">--</strong><small id="speed-upload-detail">尚未测试</small></article>
         </div>
         <div class="speed-note">测速会产生约 6–90 MB 临时网络流量，测试数据仅在内存中生成并立即丢弃。结果反映浏览器到本服务器的链路速度，不代表公网宽带速度。</div>
+      </section>
+
+      <section class="page bm-page" id="bill-manager-view">
+        <div class="bm-toolbar"><div class="bm-tabs" role="tablist" aria-label="账单数据类型"><button class="active" type="button" data-bm-role="wechat">微信记录</button><button type="button" data-bm-role="alipay">支付宝记录</button><button type="button" data-bm-role="cmb">招商银行</button></div></div>
+        <div class="empty-state" id="bm-empty" hidden>正在读取账单文件…</div>
+        <div id="bm-content"><section class="bm-source-card"><div class="bm-source-info"><strong id="bm-file-name">正在读取</strong><span><span id="bm-file-meta">等待解析</span> · <span id="bm-upload-time">上次上传时间未知</span></span></div><div class="bm-source-actions"><input id="bm-upload-input" type="file" hidden><button class="secondary-button" id="bm-upload" type="button">上传新账单</button></div></section><section class="bm-mapping-card" id="bm-mapping-card" hidden><div class="bm-section-heading"><strong>固定输出映射</strong><span>转换时自动应用</span></div><div class="bm-mappings" id="bm-mappings"></div></section><section class="bm-filter-card" id="bm-filter-card" hidden><div class="bm-section-heading"><strong>收付款方式过滤</strong><span>包含任一字符串即不导出</span></div><form class="bm-filter-form" id="bm-filter-form"><input id="bm-filter-keyword" maxlength="100" placeholder="例如：招商银行储蓄卡" required><button class="primary-button" type="submit">添加过滤</button><span id="bm-filter-match">输入后显示将过滤的数量</span></form><div class="bm-filter-rules" id="bm-filter-rules"></div></section><section class="bm-records-card"><div class="bm-section-heading"><strong>源数据预览</strong><span id="bm-record-note"></span></div><div class="bm-table-wrap" id="bm-table-wrap"></div></section><section class="bm-export-card" id="bm-export-card" hidden><div class="bm-section-heading"><strong>导出预览</strong><div class="bm-export-actions"><span id="bm-export-note"></span><button class="secondary-button" id="bm-preview-temporary" type="button" aria-pressed="false">只看临时分类</button></div></div><div class="bm-table-wrap" id="bm-export-table"></div></section><section class="bm-category-card" id="bm-category-card" hidden><div class="bm-section-heading"><strong>备注分类规则</strong><span>从上到下首条命中生效</span></div><form class="bm-category-form" id="bm-category-form"><input id="bm-rule-keyword" maxlength="100" placeholder="备注包含的字符串" required><input id="bm-rule-primary" maxlength="100" placeholder="一级分类" required><input id="bm-rule-secondary" maxlength="100" placeholder="二级分类（可空）"><button class="primary-button" type="submit">添加</button><span class="bm-rule-match" id="bm-rule-match">输入匹配字符串后显示命中数量</span></form><div class="bm-category-rules" id="bm-category-rules"></div></section></div>
       </section>
 
       <section class="page checklist-page" id="checklist-view">
@@ -256,6 +269,7 @@
       <button class="nav-item" data-view="checklist"><span data-icon="checklist"></span><span>清单</span></button>
       <button class="nav-item" data-view="beijing-pass"><span data-icon="pass"></span><span>进京证</span></button>
       <button class="nav-item" data-view="shellcrash"><span data-icon="shield"></span><span>网络守护</span></button>
+      <button class="nav-item" data-view="bill-manager"><span data-icon="receipt"></span><span>账单</span></button>
       <button class="nav-item" data-view="terminal"><span data-icon="terminal"></span><span>终端</span></button>
       <button class="nav-item" data-view="xiaoai"><span data-icon="assistant"></span><span>小爱同学</span></button>
       <button class="nav-item" data-view="music"><span data-icon="audio"></span><span>音乐</span></button>
@@ -392,6 +406,7 @@
   <script type="module" src="/modules/checklist/checklist.js"></script>
   <script type="module" src="/modules/beijing-pass/beijing-pass.js"></script>
   <script type="module" src="/modules/shellcrash/shellcrash.js"></script>
+  <script type="module" src="/modules/bill-manager/bill-manager.js"></script>
   <script type="module" src="/modules/terminal/terminal.js"></script>
 </body>
 </html>

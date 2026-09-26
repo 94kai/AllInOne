@@ -1,6 +1,8 @@
 import http from 'node:http';
-import { readFile, readdir, stat, lstat, realpath, mkdir, writeFile, rename, rm, statfs } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import { readFile, readdir, stat, lstat, realpath, mkdir, writeFile, rename, rm, statfs, link, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
@@ -15,6 +17,7 @@ import { ChecklistModule } from './modules/checklist/index.mjs';
 import { TerminalModule } from './modules/terminal/index.mjs';
 import { BeijingPassModule } from './modules/beijing-pass/index.mjs';
 import { ShellCrashModule } from './modules/shellcrash/index.mjs';
+import { BillManagerModule } from './modules/bill-manager/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(projectDir, 'public');
@@ -39,6 +42,8 @@ const favoriteFile = path.join(dataDir, 'favorites.json');
 const port = Number(process.env.PORT || 2006);
 const host = process.env.HOST || '0.0.0.0';
 const textPreviewLimit = Math.max(1024, Number(process.env.TEXT_PREVIEW_LIMIT || 524288));
+const configuredFileUploadLimit = Number(process.env.FILE_UPLOAD_LIMIT || 10 * 1024 * 1024 * 1024);
+const fileUploadLimit = Number.isFinite(configuredFileUploadLimit) ? Math.max(1024, configuredFileUploadLimit) : 10 * 1024 * 1024 * 1024;
 const previewOrigins = new Set((process.env.PREVIEW_ORIGINS || 'https://devstudio.xuekai.top:8888')
   .split(',').map(value => value.trim()).filter(Boolean));
 const accessToken = process.env.DEVSTUDIO_TOKEN?.trim() || '';
@@ -92,6 +97,7 @@ const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: 
 const checklist = new ChecklistModule({ dataDir });
 const beijingPass = new BeijingPassModule({ dataDir });
 const shellCrash = new ShellCrashModule({ dataDir });
+const billManager = new BillManagerModule({ dataDir });
 
 function isAllowedWebSocketOrigin(req) {
   const origin = String(req.headers.origin || '');
@@ -230,6 +236,50 @@ async function resolveSafeDeletePath(rootId, relativePath = '') {
     throw cause;
   });
   return { root, base, target, info, relative: path.relative(base, target).split(path.sep).join('/') };
+}
+
+function validateFileEntryName(value) {
+  const name = String(value || '').normalize('NFC');
+  if (!name || name === '.' || name === '..' || name !== path.basename(name) || /[\\/\0-\x1f\x7f]/.test(name)) {
+    throw Object.assign(new Error('文件名不合法'), { status: 400 });
+  }
+  if (Buffer.byteLength(name) > 255) throw Object.assign(new Error('文件名过长'), { status: 400 });
+  return name;
+}
+
+async function receiveUpload(req, directory, fileName) {
+  const declaredSize = Number(req.headers['content-length']);
+  if (Number.isFinite(declaredSize) && declaredSize > fileUploadLimit) {
+    throw Object.assign(new Error(`文件超过上传上限（${Math.round(fileUploadLimit / 1024 / 1024)} MB）`), { status: 413 });
+  }
+  const target = path.join(directory.target, fileName);
+  if (await lstat(target).then(() => true, cause => cause.code === 'ENOENT' ? false : Promise.reject(cause))) {
+    throw Object.assign(new Error('当前目录已存在同名文件'), { status: 409 });
+  }
+  const temporary = path.join(directory.target, `.${fileName}.upload-${crypto.randomUUID()}`);
+  let received = 0;
+  const limiter = new Transform({
+    transform(chunk, encoding, callback) {
+      received += chunk.length;
+      if (received > fileUploadLimit) callback(Object.assign(new Error(`文件超过上传上限（${Math.round(fileUploadLimit / 1024 / 1024)} MB）`), { status: 413 }));
+      else callback(null, chunk);
+    }
+  });
+  try {
+    await pipeline(req, limiter, createWriteStream(temporary, { flags: 'wx', mode: 0o600 }));
+    await link(temporary, target).catch(cause => {
+      if (cause.code === 'EEXIST') throw Object.assign(new Error('当前目录已存在同名文件'), { status: 409 });
+      throw cause;
+    });
+    await unlink(temporary).catch(() => {});
+    return { name: fileName, path: [directory.relative, fileName].filter(Boolean).join('/'), size: received };
+  } catch (cause) {
+    await rm(temporary, { force: true }).catch(() => {});
+    if (cause.code === 'ENOSPC') throw Object.assign(new Error('目标磁盘空间不足'), { status: 507 });
+    if (['EACCES', 'EPERM', 'EROFS'].includes(cause.code)) throw Object.assign(new Error('当前目录没有写入权限'), { status: 403 });
+    if (cause.code === 'EMLINK' || cause.code === 'ENOTSUP') throw Object.assign(new Error('目标文件系统不支持安全上传'), { status: 500 });
+    throw cause;
+  }
 }
 
 function classify(name, isDirectory) {
@@ -473,6 +523,7 @@ async function apiHandler(req, res, url) {
   if (await checklist.handle(req, res, url)) return;
   if (await beijingPass.handle(req, res, url)) return;
   if (await shellCrash.handle(req, res, url)) return;
+  if (await billManager.handle(req, res, url)) return;
   if (await terminal.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
@@ -493,6 +544,26 @@ async function apiHandler(req, res, url) {
     }));
     files.sort((a, b) => (a?.type === 'folder' ? -1 : 1) - (b?.type === 'folder' ? -1 : 1) || a?.name.localeCompare(b?.name, 'zh-CN', { numeric: true }));
     return json(res, 200, { path: current.relative, absolutePath: current.target, truncated: entries.length > 5000, hiddenCount, entries: files.filter(Boolean) });
+  }
+  if (url.pathname === '/api/files/upload' && req.method === 'POST') {
+    const directory = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
+    if (!(await stat(directory.target)).isDirectory()) throw Object.assign(new Error('上传目标不是目录'), { status: 400 });
+    const item = await receiveUpload(req, directory, validateFileEntryName(url.searchParams.get('name')));
+    return json(res, 201, { item });
+  }
+  if (url.pathname === '/api/files/directory' && req.method === 'POST') {
+    const input = await readBody(req);
+    const directory = await resolveSafePath(String(input.root || ''), String(input.path || ''));
+    if (!(await stat(directory.target)).isDirectory()) throw Object.assign(new Error('目标不是目录'), { status: 400 });
+    const name = validateFileEntryName(String(input.name || '').trim());
+    const target = path.join(directory.target, name);
+    try { await mkdir(target, { recursive: false, mode: 0o755 }); }
+    catch (cause) {
+      if (cause.code === 'EEXIST') throw Object.assign(new Error('当前目录已存在同名项目'), { status: 409 });
+      if (['EACCES', 'EPERM', 'EROFS'].includes(cause.code)) throw Object.assign(new Error('当前目录没有写入权限'), { status: 403 });
+      throw cause;
+    }
+    return json(res, 201, { item: { name, path: [directory.relative, name].filter(Boolean).join('/'), type: 'folder' } });
   }
   if (url.pathname === '/api/file' && req.method === 'GET') {
     const file = await resolveSafePath(url.searchParams.get('root'), url.searchParams.get('path') || '');
@@ -652,6 +723,7 @@ await musicDownload.initialize();
 await checklist.initialize();
 await beijingPass.initialize();
 await shellCrash.initialize();
+await billManager.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
   console.log(`文件入口：${roots.map(root => `${root.label} → ${root.path}`).join('，')}`);

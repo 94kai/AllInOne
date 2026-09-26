@@ -1,10 +1,12 @@
 const icons = {
   home: '<path d="M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5H15v-7H9v7H3.5a.5.5 0 0 1-.5-.5z"/>',
   folder: '<path d="M3 6.5h6l2 2h10v9.8a1.7 1.7 0 0 1-1.7 1.7H4.7A1.7 1.7 0 0 1 3 18.3z"/><path d="M3 9V5.7A1.7 1.7 0 0 1 4.7 4H9l2 2h7"/>',
+  'folder-plus': '<path d="M3 6.5h6l2 2h10v9.8a1.7 1.7 0 0 1-1.7 1.7H4.7A1.7 1.7 0 0 1 3 18.3z"/><path d="M3 9V5.7A1.7 1.7 0 0 1 4.7 4H9l2 2h7M12 12v5M9.5 14.5h5"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
   speed: '<path d="M4.2 18a9 9 0 1 1 15.6 0"/><path d="m12 15 4.5-5.5"/><circle cx="12" cy="15" r="1.5"/>',
   checklist: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m7.5 8 1.5 1.5L12 6M14 8h3M7.5 14 9 15.5l3-3.5M14 14h3"/>',
   pass: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h5M8 16h8"/><circle cx="17" cy="12" r="2"/>',
+  receipt: '<path d="M6 3h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
   shield: '<path d="M12 2 20 5v6c0 5.2-3.3 9.1-8 11-4.7-1.9-8-5.8-8-11V5z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
   terminal: '<path d="m5 7 4 5-4 5M11 17h8"/><rect x="2.5" y="3.5" width="19" height="17" rx="2"/>',
   trash: '<path d="M4 7h16M9 3h6l1 4H8zM6 7l1 14h10l1-14M10 11v6M14 11v6"/>',
@@ -16,6 +18,7 @@ const icons = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  upload: '<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/>',
   eye: '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.7"/>',
@@ -35,13 +38,13 @@ document.querySelectorAll('[data-icon]').forEach(node => {
   node.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[node.dataset.icon] || icons.file}</svg>`;
 });
 
-const allowedViews = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'shellcrash', 'terminal', 'xiaoai', 'music'];
+const allowedViews = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'shellcrash', 'bill-manager', 'terminal', 'xiaoai', 'music'];
 const urlView = new URLSearchParams(location.search).get('view');
 const storedView = localStorage.getItem('allinone-active-view');
-const state = { view: allowedViews.includes(urlView) ? urlView : allowedViews.includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0 };
+const state = { view: allowedViews.includes(urlView) ? urlView : allowedViews.includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0, upload: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'shellcrash', 'terminal', 'xiaoai', 'music'];
+const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'shellcrash', 'bill-manager', 'terminal', 'xiaoai', 'music'];
 function readNavOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('allinone-nav-order') || '[]');
@@ -152,7 +155,8 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'shellcrash' ? '网络守护' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'shellcrash' ? '网络守护' : state.view === 'bill-manager' ? '账单管理' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
+  $('#bm-export').hidden = state.view !== 'bill-manager';
   document.body.classList.toggle('xiaoai-active', state.view === 'xiaoai');
 }
 
@@ -182,6 +186,7 @@ function switchView(view) {
   if (view === 'checklist') document.dispatchEvent(new CustomEvent('checklist:refresh'));
   if (view === 'beijing-pass') document.dispatchEvent(new CustomEvent('beijing-pass:refresh'));
   if (view === 'shellcrash') document.dispatchEvent(new CustomEvent('shellcrash:refresh'));
+  if (view === 'bill-manager') document.dispatchEvent(new CustomEvent('bill-manager:refresh'));
 }
 
 async function loadSystem() {
@@ -248,6 +253,67 @@ async function loadFiles(nextPath = state.path) {
     $('#copy-current-path').disabled = !state.absolutePath;
     $('#file-hint').textContent = data.truncated ? '仅显示前 5000 项' : !state.showHidden && data.hiddenCount ? `已隐藏 ${data.hiddenCount} 项` : '受控目录';
   } catch (error) { $('#file-list').innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`; toast(error.message); }
+}
+
+function uploadOne(file, root, directory, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const query = new URLSearchParams({ root, path: directory, name: file.name });
+    xhr.open('POST', apiUrl(`/api/files/upload?${query}`)); xhr.withCredentials = true;
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.addEventListener('progress', event => onProgress(event.loaded, event.lengthComputable ? event.total : file.size));
+    xhr.addEventListener('load', () => {
+      let data = {}; try { data = JSON.parse(xhr.responseText || '{}'); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `上传失败（HTTP ${xhr.status}）`));
+    });
+    xhr.addEventListener('error', () => reject(new Error('上传连接中断')));
+    xhr.addEventListener('abort', () => reject(Object.assign(new Error('已取消上传'), { cancelled: true })));
+    state.upload = xhr; xhr.send(file);
+  });
+}
+
+async function uploadFiles(files) {
+  const items = [...files]; if (!items.length || state.upload) return;
+  const root = state.root; const directory = state.path;
+  const status = $('#file-upload-status'); const progress = $('#file-upload-progress');
+  const total = items.reduce((sum, file) => sum + file.size, 0); let completed = 0; let uploaded = 0; const failed = [];
+  status.hidden = false; $('#file-upload').disabled = true;
+  try {
+    for (let index = 0; index < items.length; index += 1) {
+      const file = items[index]; $('#file-upload-title').textContent = `上传 ${index + 1}/${items.length}`;
+      $('#file-upload-detail').textContent = file.name;
+      try {
+        await uploadOne(file, root, directory, (loaded) => {
+          progress.value = total ? Math.round((completed + loaded) / total * 100) : 100;
+        });
+        uploaded += 1;
+      } catch (error) {
+        if (error.cancelled) throw error;
+        failed.push(`${file.name}：${error.message}`);
+      }
+      completed += file.size; progress.value = total ? Math.round(completed / total * 100) : 100;
+    }
+    toast(failed.length ? `上传完成：成功 ${uploaded} 个，失败 ${failed.length} 个（${failed[0]}）` : `已上传 ${uploaded} 个文件`);
+  } catch (error) {
+    if (error.cancelled) toast(`已取消${uploaded ? `，此前已上传 ${uploaded} 个` : ''}`);
+    else toast(`${uploaded ? `已上传 ${uploaded} 个，` : ''}${error.message}`);
+  } finally {
+    state.upload = null; $('#file-upload').disabled = false; $('#file-upload-input').value = '';
+    status.hidden = true; progress.value = 0;
+    if (state.root === root && state.path === directory) await loadFiles();
+  }
+}
+
+async function createFolder() {
+  const raw = prompt('请输入新文件夹名称'); if (raw === null) return;
+  const name = raw.trim(); if (!name) return toast('文件夹名称不能为空');
+  $('#folder-create').disabled = true;
+  try {
+    await request('/api/files/directory', { method: 'POST', body: JSON.stringify({ root: state.root, path: state.path, name }) });
+    await loadFiles(); toast(`已创建“${name}”`);
+  } catch (error) { toast(error.message); }
+  finally { $('#folder-create').disabled = false; }
 }
 
 async function openPreview(entry) {
@@ -356,6 +422,10 @@ $('#file-list').addEventListener('keydown', event => {
   const row = event.target.closest('[data-file-path]'); if (!row) return; event.preventDefault(); row.click();
 });
 $('#copy-current-path').addEventListener('click', () => { if (state.absolutePath) copyPath(state.absolutePath); });
+$('#folder-create').addEventListener('click', createFolder);
+$('#file-upload').addEventListener('click', () => { if (!state.upload) $('#file-upload-input').click(); });
+$('#file-upload-input').addEventListener('change', event => uploadFiles(event.target.files));
+$('#file-upload-cancel').addEventListener('click', () => state.upload?.abort());
 $('#list-mode').addEventListener('click', () => { state.grid = false; $('#list-mode').classList.add('active'); $('#grid-mode').classList.remove('active'); renderFiles(); });
 $('#grid-mode').addEventListener('click', () => { state.grid = true; $('#grid-mode').classList.add('active'); $('#list-mode').classList.remove('active'); renderFiles(); });
 $('#hidden-mode').addEventListener('click', () => {
