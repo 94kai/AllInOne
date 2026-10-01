@@ -35,7 +35,6 @@ function bmRenderExport(source) {
   const rows = bmTemporaryOnly ? group.rows.filter(row => String(row['类别'] || '').startsWith('临时')) : group.rows;
   const total = (bmData.exportPreview?.bills?.rows.length || 0) + (bmData.exportPreview?.alipay?.rows.length || 0) + (bmData.exportPreview?.cmb?.rows.length || 0);
   bmNode('bm-export-note').textContent = bmTemporaryOnly ? `临时分类 ${rows.length} / ${group.rows.length} 条` : `当前 ${group.rows.length} 条 · 统一导出 ${total} 条`;
-  bmNode('bm-export').hidden = false;
   bmNode('bm-preview-temporary').classList.toggle('active', bmTemporaryOnly);
   bmNode('bm-preview-temporary').setAttribute('aria-pressed', String(bmTemporaryOnly));
   bmNode('bm-preview-temporary').textContent = bmTemporaryOnly ? '显示全部' : '只看临时分类';

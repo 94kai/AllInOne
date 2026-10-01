@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { BeijingPassAutomation, permitDate, permitDecision } from './automation.mjs';
 
 const ROOT = '/api/modules/beijing-pass';
 const DEFAULTS = {
@@ -25,6 +26,9 @@ export class BeijingPassModule {
     this.monitor = null;
     this.monitorTimer = null;
     this.monitorRunning = false;
+    this.applying = false;
+    this.saveQueue = Promise.resolve();
+    this.automation = new BeijingPassAutomation(this);
     this.meta = { updatedAt: '', stateAuthUpdatedAt: '', lastQueryAt: '', lastSuccessAt: '', lastDirectSuccessAt: '', firstDirectFailureAt: '', lastPath: '', lastError: '' };
   }
 
@@ -33,20 +37,28 @@ export class BeijingPassModule {
       const saved = JSON.parse(await readFile(this.file, 'utf8'));
       this.config = Object.fromEntries(Object.keys(DEFAULTS).map(key => [key, saved.config?.[key] || DEFAULTS[key]]));
       this.meta = { ...this.meta, ...(saved.meta || {}) };
+      this.monitor = saved.monitor || null;
     } catch { /* 首次使用由内置默认值初始化。 */ }
     if (!this.config.serverChanSendKey) this.config.serverChanSendKey = String(process.env.BEIJING_PASS_SERVERCHAN_SENDKEY || '').trim();
     try {
       const value = JSON.parse(await readFile(this.applyDefaultsFile, 'utf8'));
       this.applyDefaults = value && typeof value === 'object' ? value : null;
     } catch { this.applyDefaults = null; }
+    if (this.monitor?.status === 'active') this.scheduleNextPoll();
+    await this.automation.initialize();
   }
 
-  async save() {
-    await mkdir(this.dir, { recursive: true });
-    const temporary = `${this.file}.tmp`;
-    await writeFile(temporary, `${JSON.stringify({ config: this.config, meta: this.meta }, null, 2)}\n`, { mode: 0o600 });
-    await chmod(temporary, 0o600);
-    await rename(temporary, this.file);
+  save() {
+    const content = `${JSON.stringify({ config: this.config, meta: this.meta, monitor: this.monitor }, null, 2)}\n`;
+    const operation = this.saveQueue.then(async () => {
+      await mkdir(this.dir, { recursive: true });
+      const temporary = `${this.file}.tmp`;
+      await writeFile(temporary, content, { mode: 0o600 });
+      await chmod(temporary, 0o600);
+      await rename(temporary, this.file);
+    });
+    this.saveQueue = operation.catch(() => {});
+    return operation;
   }
 
   async body(req) {
@@ -63,7 +75,7 @@ export class BeijingPassModule {
 
   publicConfig() {
     const { stateUrl, stateAuth, ssoUrl, ssoAuth, serverChanSendKey } = this.config;
-    return { stateUrl, stateAuth, ssoUrl, ssoAuth, serverChanSendKey, meta: this.meta, monitor: this.publicMonitor() };
+    return { stateUrl, stateAuth, ssoUrl, ssoAuth, serverChanSendKey, meta: this.meta, monitor: this.publicMonitor(), automation: this.automation.publicState() };
   }
 
   publicMonitor() {
@@ -91,11 +103,12 @@ export class BeijingPassModule {
     const vehicle = vehicles.find(item => String(item.vId) === String(this.monitor?.vehicleId)) || vehicles.find(item => item.hphm === this.monitor?.plate);
     if (!vehicle) return null;
     const records = [...(vehicle.bzxx || []), ...(vehicle.ecbzxx || [])];
-    return records.find(record => String(record.jjrq || record.yxqs || '').startsWith(this.monitor.applyDate)) || records[0] || null;
+    return records.find(record => permitDate(record.jjrq || record.yxqs) === this.monitor.applyDate && (!record.jjzzl || String(record.jjzzl).padStart(2, '0') === this.monitor.entryType)) || null;
   }
 
   async pollMonitor() {
     if (this.monitorRunning || !this.monitor || this.monitor.status !== 'active') return;
+    if (this.monitor.attempts >= MAX_POLL_ATTEMPTS) return this.completeMonitor('stopped');
     this.monitorRunning = true;
     this.monitorTimer = null;
     this.monitor.attempts += 1;
@@ -108,13 +121,14 @@ export class BeijingPassModule {
         const status = String(record.blztmc || record.statusName || record.stateName || '状态未知');
         this.monitor.lastStatus = status;
         this.monitor.lastError = '';
-        if (!status.includes('审核中')) return await this.completeMonitor('completed', record);
+        if (/(失败|驳回|不通过|未通过|作废|撤销|取消|生效中|待生效|有效|审核通过|审批通过|办理成功|已办结)/.test(status)) return await this.completeMonitor('completed', record);
       } else this.monitor.lastError = '本次查询未找到对应申请记录';
     } catch (cause) { this.monitor.lastError = cause.message; }
     finally { this.monitorRunning = false; }
     if (this.monitor?.status !== 'active') return;
     if (this.monitor.attempts >= MAX_POLL_ATTEMPTS) return this.completeMonitor('stopped');
     this.scheduleNextPoll();
+    await this.save();
   }
 
   async completeMonitor(status, record = null) {
@@ -125,6 +139,7 @@ export class BeijingPassModule {
     if (this.monitorTimer) clearTimeout(this.monitorTimer);
     this.monitorTimer = null;
     await this.notifyMonitor(record);
+    await this.save();
   }
 
   async notifyMonitor(record) {
@@ -137,20 +152,30 @@ export class BeijingPassModule {
     const reason = record?.shsbyyms || record?.shsbyy || this.monitor.lastError || '';
     const title = stopped ? `进京证查询超时：${this.monitor.plate}` : `进京证审核结果：${this.monitor.plate} ${finalStatus}`;
     const desp = [`- 车辆：${this.monitor.plate}`, `- 状态：${finalStatus}`, `- 生效日期：${this.monitor.applyDate}`, `- 类型：${this.monitor.entryType === '01' ? '六环内' : '六环外'}`, `- 已查询：${this.monitor.attempts}/${MAX_POLL_ATTEMPTS} 次`, reason ? `- 说明：${reason}` : '', `- 检查时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`].filter(Boolean).join('\n');
+    const result = await this.sendNotification(title, desp);
+    this.monitor.notificationStatus = result.status;
+    if (result.error) this.monitor.lastError = `${this.monitor.lastError ? `${this.monitor.lastError}；` : ''}${result.error}`;
+  }
+
+  async sendNotification(title, desp) {
+    const sendKey = this.config.serverChanSendKey;
+    if (!sendKey) { console.error('进京证微信提醒未发送：未配置 Server酱 SendKey'); return { status: 'not-configured', error: '未配置 Server酱 SendKey' }; }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await fetch(`https://sctapi.ftqq.com/${encodeURIComponent(sendKey)}.send`, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, desp }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.code !== 0) throw new Error(data.message || `HTTP ${response.status}`);
-      this.monitor.notificationStatus = 'sent';
+      return { status: 'sent' };
     } catch (cause) {
-      this.monitor.notificationStatus = 'failed';
-      this.monitor.lastError = `${this.monitor.lastError ? `${this.monitor.lastError}；` : ''}微信推送失败：${cause.name === 'AbortError' ? '请求超时' : cause.message}`;
+      const message = `微信推送失败：${cause.name === 'AbortError' ? '请求超时' : cause.message}`;
+      console.error(message);
+      return { status: 'failed', error: message };
     } finally { clearTimeout(timer); }
   }
 
   shutdown() {
+    this.automation.shutdown();
     if (this.monitorTimer) clearTimeout(this.monitorTimer);
     this.monitorTimer = null;
   }
@@ -250,21 +275,28 @@ export class BeijingPassModule {
   }
 
   async apply(input) {
+    if (this.applying || this.monitorRunning || this.monitor?.status === 'active' || this.monitor?.notificationStatus === 'sending') throw httpError('已有申请正在提交或等待审核结果，请稍后再试', 409);
+    this.applying = true;
+    try { return await this.submitApplication(input); }
+    finally { this.applying = false; }
+  }
+
+  async submitApplication(input) {
     if (input?.confirmed !== true) throw httpError('提交办理前必须明确确认');
     if (!this.applyDefaults) throw httpError('尚未配置固定目的地', 409);
     const vehicleId = String(input.vehicleId || '').trim();
     const entryType = String(input.entryType || '');
     const applyDate = String(input.applyDate || '');
     if (!vehicleId || !['01', '02'].includes(entryType)) throw httpError('车辆或进京证类型不正确');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(applyDate) || applyDate < this.localDate() || applyDate > this.localDate(7)) throw httpError('生效日期只能选择今天起 7 天内');
+    if (permitDate(applyDate) !== applyDate || !applyDate || applyDate < this.localDate() || applyDate > this.localDate(7)) throw httpError('生效日期只能选择今天起 7 天内');
 
     // 提交前重新查询，避免旧页面重复办理或消耗额度。
     const stateResult = await this.query();
     const stateData = stateResult.data?.data || {};
     const stateVehicle = (stateData.bzclxx || []).find(vehicle => String(vehicle.vId) === vehicleId);
     if (!stateVehicle) throw httpError('状态列表中没有找到所选车辆', 404);
-    const records = [...(stateVehicle.bzxx || []), ...(stateVehicle.ecbzxx || [])];
-    if (records.some(record => /(审核中|生效中|待生效)/.test(String(record.blztmc || '')))) throw httpError('该车辆已有审核中、生效中或待生效的进京证，不能重复提交', 409);
+    const decision = permitDecision(stateVehicle, applyDate);
+    if (decision.kind !== 'needed') throw httpError(decision.reason, 409);
     if (entryType === '01' && !stateVehicle.ylzsfkb) throw httpError(stateVehicle.bnbzyy || '当前不能办理六环内进京证', 409);
     if (entryType === '02' && !stateVehicle.elzsfkb) throw httpError(stateVehicle.bnbzyy || '当前不能办理六环外进京证', 409);
 
@@ -291,6 +323,7 @@ export class BeijingPassModule {
     const response = await this.upstream(`${baseUrl}/pro//applyRecordController/insertApplyRecord`, this.config.stateAuth, { method: 'POST', body: payload });
     this.businessData(response, '提交办理');
     this.startMonitor({ vehicleId, plate: vehicle.hphm, applyDate, entryType });
+    await this.save();
     return { success: true, message: response.msg || '信息已提交，正在审核', notices: Array.isArray(response.data?.cgts) ? response.data.cgts : [], monitor: this.publicMonitor() };
   }
 
@@ -335,6 +368,9 @@ export class BeijingPassModule {
 
   async handle(req, res, url) {
     if (!url.pathname.startsWith(ROOT)) return false;
+    if (url.pathname === `${ROOT}/automation` && req.method === 'GET') return this.send(res, 200, this.automation.publicState());
+    if (url.pathname === `${ROOT}/automation` && req.method === 'PUT') return this.send(res, 200, await this.automation.configure(await this.body(req)));
+    if (url.pathname === `${ROOT}/automation/check` && req.method === 'POST') return this.send(res, 200, await this.automation.run());
     if (url.pathname === `${ROOT}/config` && req.method === 'GET') return this.send(res, 200, this.publicConfig());
     if (url.pathname === `${ROOT}/config` && req.method === 'PUT') {
       const input = await this.body(req), credentials = {};

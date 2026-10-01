@@ -2,6 +2,48 @@ const apiBase = window.allinoneApiBase || '';
 const $ = selector => document.querySelector(selector);
 let config;
 let preparation;
+let automation;
+let automationBusy = false;
+
+function renderAutomation() {
+  if (!automation) return;
+  const vehicleSelect = $('#bp-auto-vehicle');
+  const vehicles = preparation?.vehicles || [];
+  vehicleSelect.innerHTML = '<option value="">请选择车辆</option>' + vehicles.map(vehicle => `<option value="${escapeHtml(vehicle.id)}">${escapeHtml(vehicle.plate)}</option>`).join('');
+  if (automation.vehicleId && !vehicles.some(vehicle => String(vehicle.id) === automation.vehicleId)) vehicleSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(automation.vehicleId)}">已保存车辆（等待资料确认）</option>`);
+  vehicleSelect.value = automation.vehicleId || (vehicles.length === 1 ? String(vehicles[0].id) : '');
+  $('#bp-auto-type').value = automation.entryType;
+  $('#bp-auto-enabled').checked = automation.enabled;
+  const busy = automationBusy || automation.running || Boolean(automation.error);
+  vehicleSelect.disabled = busy || !vehicles.length;
+  $('#bp-auto-type').disabled = busy;
+  $('#bp-auto-enabled').disabled = busy;
+  $('#bp-auto-check').disabled = busy;
+  $('#bp-auto-check').textContent = busy && !automation.error ? '检测处理中…' : '立即检测';
+  const last = automation.lastRun;
+  const notifications = { sent:'微信提醒已发送', failed:'微信提醒发送失败', 'not-configured':'未配置微信提醒', none:'无需发送提醒', 'not-needed':'无需续办，未发送提醒' };
+  $('#bp-auto-status').classList.toggle('is-error', Boolean(automation.error || last?.status === 'failed' || last?.notificationError));
+  $('#bp-auto-status').innerHTML = `${automation.error ? escapeHtml(automation.error) : `下次检测：${escapeHtml(time(automation.nextCheckAt))}`}<br>自动申请：${automation.enabled ? '已开启' : '未开启'}${automation.notificationConfigured ? '' : '<br>请在接口配置中填写 Server酱 SendKey，否则无法发送微信提醒'}${last ? `<br>最近检测：${escapeHtml(time(last.startedAt))}<br>${escapeHtml(last.plate || '')} ${escapeHtml(last.message)}<br>${escapeHtml(notifications[last.notificationStatus] || '等待处理')}${last.notificationError ? `：${escapeHtml(last.notificationError)}` : ''}` : '<br>尚无检测记录'}`;
+}
+
+async function saveAutomation() {
+  if (!automation || automationBusy) return;
+  const input = { enabled: $('#bp-auto-enabled').checked, vehicleId: $('#bp-auto-vehicle').value, entryType: $('#bp-auto-type').value };
+  automationBusy = true;
+  renderAutomation();
+  try { automation = await request('/automation', { method:'PUT', body:JSON.stringify(input) }); }
+  catch (error) { alert(error.message); }
+  finally { automationBusy = false; renderAutomation(); }
+}
+
+['bp-auto-enabled', 'bp-auto-vehicle', 'bp-auto-type'].forEach(id => $(`#${id}`).addEventListener('change', saveAutomation));
+$('#bp-auto-check').addEventListener('click', async () => {
+  if (automationBusy) return;
+  automationBusy = true; renderAutomation();
+  try { automation = await request('/automation/check', { method:'POST' }); }
+  catch (error) { alert(error.message); }
+  finally { automationBusy = false; renderAutomation(); await loadConfig(); }
+});
 
 async function request(path, options = {}) {
   const response = await fetch(`${apiBase}/api/modules/beijing-pass${path}`, { ...options, credentials: 'include', headers: options.body ? { 'Content-Type': 'application/json' } : undefined });
@@ -42,8 +84,8 @@ function showMeta(meta = {}, attempts = [], monitor = config?.monitor) {
   $('#bp-meta').innerHTML = `最近查询：${time(meta.lastQueryAt)}<br>最近成功：${time(meta.lastSuccessAt)}<br>最近直查成功：${time(meta.lastDirectSuccessAt)}<br>当前 Auth 首次直查失败：${time(meta.firstDirectFailureAt)}<br>状态 Auth 换取：${time(meta.stateAuthUpdatedAt)}<br>成功路径：${escapeHtml(pathLabel(meta.lastPath))}${attempts.length ? `<br>本次降级记录：${attempts.map(item => `${escapeHtml(item.step)}：${escapeHtml(item.error)}`).join('；')}` : ''}${monitorText}`;
 }
 async function loadConfig() {
-  try { config = await request('/config'); showMeta(config.meta); renderInterfaces(config.meta?.lastPath); }
-  catch (error) { $('#bp-meta').textContent = error.message; }
+  try { config = await request('/config'); automation = config.automation; renderAutomation(); showMeta(config.meta); renderInterfaces(config.meta?.lastPath); }
+  catch (error) { $('#bp-meta').textContent = error.message; $('#bp-auto-status').textContent = error.message; }
 }
 function renderResult(data, path, queriedAt) {
   const source = data?.data ?? data?.result ?? data;
@@ -75,7 +117,8 @@ function dateValue(offset = 0) { const date = new Date(); date.setDate(date.getD
 function selectedVehicle() { return preparation?.vehicles.find(item => item.id === $('#bp-draft-vehicle')?.value) || preparation?.vehicles[0]; }
 function updateSubmitState() {
   const vehicle = selectedVehicle(), type = $('#bp-draft-type')?.value, button = $('#bp-submit'); if (!vehicle || !button) return;
-  const active = vehicle.records.some(record => /(审核中|生效中|待生效)/.test(record.status));
+  const applyDate = $('#bp-draft-date')?.value || dateValue();
+  const active = vehicle.records.some(record => /(审核中|办理中|审批中|待审核|申请中)/.test(record.status) || (/(生效中|待生效)/.test(record.status) && (!record.validTo || record.validTo.slice(0, 10) >= applyDate)));
   const eligible = type === '六环内' ? vehicle.canInner : vehicle.canOuter;
   button.disabled = !preparation.submitEnabled || active || !eligible;
   button.textContent = active ? '已有办理中或生效中的进京证' : !eligible ? `当前不能办理${type}` : '确认并提交办理';
@@ -93,7 +136,7 @@ function renderPreparation() {
   const content = $('#bp-prepare-content');
   if (!preparation.vehicles.length) { content.innerHTML = '<div class="empty-state">账号下没有可用车辆</div>'; return; }
   const today = dateValue(), maxDate = dateValue(7);
-  content.innerHTML = `<div class="bp-prepare-form"><div class="bp-prepare-profile"><span>驾驶人 ${escapeHtml(preparation.driver.name)}</span><span>证件 ${escapeHtml(preparation.driver.identityMasked)}</span><span>车辆 ${preparation.vehicles.length} 辆</span></div><div class="bp-prepare-fields"><label>办理车辆<select id="bp-draft-vehicle">${preparation.vehicles.map(vehicle => `<option value="${escapeHtml(vehicle.id)}">${escapeHtml(vehicle.plate)} · ${escapeHtml(vehicle.brand || vehicle.vehicleTypeName)}</option>`).join('')}</select></label><label>进京证类型<select id="bp-draft-type"><option>六环内</option><option selected>六环外</option></select></label><label>计划生效日期<input id="bp-draft-date" type="date" min="${today}" max="${maxDate}" value="${today}"></label><label>固定目的地<input value="${escapeHtml(preparation.destination?.detail || '未配置')}" readonly></label></div><div class="bp-draft" id="bp-draft-preview"></div><div class="bp-capture-needed">提交前会重新检查当前状态与办理资格。请求只发送一次；如果发生超时，请先查询状态，不要立即重复办理。</div><button class="primary-button" id="bp-submit" type="button">确认并提交办理</button><div id="bp-apply-result"></div></div>`;
+  content.innerHTML = `<div class="bp-prepare-form"><div class="bp-prepare-profile"><span>驾驶人 ${escapeHtml(preparation.driver.name)}</span><span>证件 ${escapeHtml(preparation.driver.identityMasked)}</span><span>车辆 ${preparation.vehicles.length} 辆</span></div><div class="bp-prepare-fields"><label>办理车辆<select id="bp-draft-vehicle">${preparation.vehicles.map(vehicle => `<option value="${escapeHtml(vehicle.id)}">${escapeHtml(vehicle.plate)} · ${escapeHtml(vehicle.brand || vehicle.vehicleTypeName)}</option>`).join('')}</select></label><label>进京证类型<select id="bp-draft-type"><option selected>六环内</option><option>六环外</option></select></label><label>计划生效日期<input id="bp-draft-date" type="date" min="${today}" max="${maxDate}" value="${today}"></label><label>固定目的地<input value="${escapeHtml(preparation.destination?.detail || '未配置')}" readonly></label></div><div class="bp-draft" id="bp-draft-preview"></div><div class="bp-capture-needed">提交前会重新检查当前状态与办理资格。请求只发送一次；如果发生超时，请先查询状态，不要立即重复办理。</div><button class="primary-button" id="bp-submit" type="button">确认并提交办理</button><div id="bp-apply-result"></div></div>`;
   ['bp-draft-vehicle','bp-draft-type','bp-draft-date'].forEach(id => $(`#${id}`).addEventListener('change', renderDraft)); renderDraft();
   $('#bp-submit').addEventListener('click', submitApply);
 }
@@ -122,7 +165,7 @@ async function queryPassState() {
 async function loadPreparation(renderState = false) {
   const button = $('#bp-prepare'); button.disabled = true; button.textContent = '正在读取…';
   try {
-    preparation = await request('/prepare'); renderPreparation();
+    preparation = await request('/prepare'); renderPreparation(); renderAutomation();
     if (renderState && preparation.state) {
       renderResult(preparation.state.data, preparation.state.path, preparation.state.meta?.lastSuccessAt);
       showMeta(preparation.state.meta, preparation.state.attempts);
@@ -143,7 +186,7 @@ document.querySelectorAll('[data-bp-close]').forEach(button => button.addEventLi
 $('#bp-config-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.submitter; button.disabled = true;
   const fields = new FormData(event.currentTarget);
-  try { config = await request('/config', { method:'PUT', body:JSON.stringify({ stateAuth:fields.get('stateAuth'), ssoAuth:fields.get('ssoAuth'), serverChanSendKey:fields.get('serverChanSendKey') }) }); $('#bp-config-modal').hidden = true; document.body.style.overflow = ''; showMeta(config.meta); renderInterfaces(config.meta?.lastPath); }
+  try { config = await request('/config', { method:'PUT', body:JSON.stringify({ stateAuth:fields.get('stateAuth'), ssoAuth:fields.get('ssoAuth'), serverChanSendKey:fields.get('serverChanSendKey') }) }); automation = config.automation; renderAutomation(); $('#bp-config-modal').hidden = true; document.body.style.overflow = ''; showMeta(config.meta); renderInterfaces(config.meta?.lastPath); }
   catch (error) { alert(error.message); } finally { button.disabled = false; }
 });
 document.addEventListener('beijing-pass:refresh', () => Promise.all([loadConfig(), loadPreparation(true)]));

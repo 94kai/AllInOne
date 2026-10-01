@@ -118,6 +118,13 @@
           <button class="secondary-button" id="bp-settings" type="button">接口配置</button>
         </div>
         <button class="primary-button bp-query" id="bp-query" type="button">查询进京证</button>
+        <section class="bp-automation" aria-label="进京证自动检测">
+          <div class="bp-automation-heading"><div><strong>每日检测 · 22:00</strong><small>北京时间 · 需要续办时申请明天的进京证</small></div><button class="secondary-button" id="bp-auto-check" type="button" disabled>立即检测</button></div>
+          <div class="bp-prepare-fields"><label>检测车辆<select id="bp-auto-vehicle" disabled><option value="">正在读取车辆…</option></select></label><label>自动申请类型<select id="bp-auto-type" disabled><option value="01">六环内</option><option value="02">六环外</option></select></label></div>
+          <label class="bp-auto-switch"><span><strong>自动申请</strong><small>关闭时仍检测，需要续办会发送未开启提醒</small></span><input id="bp-auto-enabled" type="checkbox" role="switch" disabled></label>
+          <p class="bp-auto-note">立即检测也会按开关执行申请；使用办理准备中的固定目的地和驾驶人资料。</p>
+          <div id="bp-auto-status" class="bp-auto-status" role="status" aria-live="polite">正在读取检测设置…</div>
+        </section>
         <details class="bp-interface-section">
           <summary class="bp-section-heading"><strong id="bp-interface-title">接口调用链</strong><span id="bp-final-route">等待查询</span></summary>
           <div class="bp-interface-flow" id="bp-interface-flow"><div class="empty-state">正在读取接口配置…</div></div>
