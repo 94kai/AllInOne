@@ -23,7 +23,7 @@ from music_service import build_music_server
 from player_control import ask_xiaoai
 from player_control import play_music_url
 from player_control import speak_text
-from player_control import stop_playback
+from player_control import stop_playback, stop_cloud_music
 
 
 LOG_LEVEL = str((MUSIC_CONFIG.get("logging") or {}).get("level", "INFO")).upper()
@@ -78,12 +78,20 @@ async def on_event(event: str):
     if not text:
         return
 
+    App.voice_action_seq += 1
+    if App.voice_music_task and not App.voice_music_task.done():
+        App.voice_music_task.cancel()
+        await asyncio.gather(App.voice_music_task, return_exceptions=True)
     logger.info("ASR 最终文本: %s", text)
     # await App.handle_user_speech_interrupt(text)
 
     if is_stop_play_command(text, App.stop_keywords):
+        logger.info("命中停止指令: %s，取消本地播放队列及切歌计时", text)
         App.disarm_reply_interrupt("收到停止命令")
         asyncio.create_task(App.stop_music())
+        return
+
+    if App.automation_voice_handler and await App.automation_voice_handler(text):
         return
 
     if App._is_refresh_index_command(text):
@@ -93,13 +101,13 @@ async def on_event(event: str):
 
     if App._is_random_play_command(text):
         App.arm_reply_interrupt("语音随机播放")
-        asyncio.create_task(App.play_random_music())
+        App.voice_music_task = asyncio.create_task(App.play_voice_music())
         return
 
     keyword = extract_play_keyword(text, App.play_keywords)
     if keyword:
         App.arm_reply_interrupt(f"语音搜索播放:{keyword}")
-        asyncio.create_task(App.play_local_music_by_keyword(keyword))
+        App.voice_music_task = asyncio.create_task(App.play_voice_music(keyword))
 
 
 def on_event_callback(event: str):
@@ -107,6 +115,13 @@ def on_event_callback(event: str):
 
 
 class App:
+    automation_voice_handler = None
+    voice_action_seq = 0
+    voice_music_task: asyncio.Task | None = None
+    voice_settling = False
+    voice_reply_at = 0.0
+    voice_reply_seen = False
+    voice_announcement_text = ""
     loop: asyncio.AbstractEventLoop | None = None
     music_server: LocalMusicHttpServer | None = None
     local_music_lock = asyncio.Lock()
@@ -168,6 +183,9 @@ class App:
 
     @classmethod
     def arm_reply_interrupt(cls, reason: str):
+        if reason.startswith(("语音歌单:", "语音搜索播放:", "语音随机播放")):
+            cls.voice_reply_seen = False
+            cls.voice_reply_at = time.monotonic()
         cls.reply_interrupt_armed = True
         cls.reply_interrupt_armed_at = time.monotonic()
         cls.reply_interrupt_reason = reason
@@ -223,6 +241,23 @@ class App:
     def try_capture_reply_text(cls, header: dict[str, Any], payload: dict[str, Any], line: dict[str, Any]):
         namespace = str(header.get("namespace") or "")
         name = str(header.get("name") or "")
+        if cls.voice_announcement_text and namespace == "SpeechSynthesizer" and name in {"Speak", "SpeakStream"}:
+            if cls.voice_announcement_text in cls._extract_candidate_texts(payload):
+                logger.info("本地点歌数量提示已下发，不拦截自身播报")
+                return
+        waiting_for_voice = cls.voice_settling or (cls._is_reply_interrupt_armed() and cls.reply_interrupt_reason.startswith(("语音歌单:", "语音搜索播放:", "语音随机播放")))
+        if waiting_for_voice and (
+            (namespace == "SpeechSynthesizer" and name in {"Speak", "SpeakStream"})
+            or (namespace == "AudioPlayer" and name == "Play")
+        ):
+            cls.voice_reply_seen = True
+            cls.voice_reply_at = time.monotonic()
+            logger.info("语音音乐等待云端指令结束: %s.%s", namespace, name)
+            asyncio.create_task(cls._interrupt_reply_playback())
+        if not waiting_for_voice and namespace == "AudioPlayer" and name == "Play" and cls.current_song:
+            song = cls.current_song
+            if song.url not in json.dumps(payload, ensure_ascii=False):
+                asyncio.create_task(cls.cancel_queue_after_cloud_takeover(song))
         if namespace == "SpeechRecognizer" and name == "RecognizeResult":
             return
 
@@ -255,7 +290,7 @@ class App:
             name or "-",
             cls.last_reply_text,
         )
-        if cls._is_reply_interrupt_armed():
+        if not waiting_for_voice and cls._is_reply_interrupt_armed():
             is_speak_event = "speechsynthesizer" in namespace_lower and "speak" in name_lower
             if is_speak_event:
                 now = time.monotonic()
@@ -304,8 +339,82 @@ class App:
         async with cls.reply_interrupt_lock:
             if not cls._is_reply_interrupt_armed():
                 return
-            logger.info("命中回复拦截窗口，立即停止小爱当前播报")
-            await stop_playback()
+            logger.info("命中回复拦截窗口，发送云端音乐停止指令")
+            try:
+                await stop_cloud_music()
+            except Exception:
+                logger.exception("云端音乐停止命令失败")
+
+    @classmethod
+    async def cancel_queue_after_cloud_takeover(cls, expected_song):
+        async with cls.local_music_lock:
+            if cls.current_song is not expected_song:
+                return
+            cls.voice_action_seq += 1
+            count = await cls._clear_queue_unlocked(stop_device=False)
+            logger.warning("云端播放接管音箱，清除本地队列及切歌计时: 数量=%d，不再自动恢复", count)
+
+    @classmethod
+    async def prepare_voice_playlist(cls, keep_interrupt=False):
+        await cls.clear_queue(stop_device=True)
+        sequence = cls.voice_action_seq
+        started = time.monotonic()
+        if not cls.voice_reply_seen:
+            cls.voice_reply_at = started
+        cls.voice_settling = True
+        logger.info("语音音乐等待接管: 必须收到云端响应，至少等待2秒且指令安静0.8秒后播放")
+        ready = False
+        try:
+            while True:
+                await asyncio.sleep(0.1)
+                if sequence != cls.voice_action_seq:
+                    raise ValueError("等待播放期间收到新指令，本次语音歌单已取消")
+                now = time.monotonic()
+                if now - started >= 10:
+                    raise ValueError("未收到云端响应或指令持续未结束，本次语音播放已取消，请重试")
+                if cls.voice_reply_seen and now - started >= 2 and now - cls.voice_reply_at >= 0.8:
+                    async with cls.reply_interrupt_lock:
+                        if sequence != cls.voice_action_seq:
+                            raise ValueError("等待播放期间收到新指令，本次播放已取消")
+                        await stop_cloud_music()
+                    if sequence != cls.voice_action_seq:
+                        raise ValueError("等待播放期间收到新指令，本次播放已取消")
+                    if time.monotonic() - cls.voice_reply_at < 0.8:
+                        continue
+                    ready = True
+                    logger.info("云端指令已安静，云端音乐 stop 指令已返回，开始本地播放（不代表云端语音结束）: 等待%.1f秒", now - started)
+                    return
+        finally:
+            cls.voice_settling = False
+            if not (keep_interrupt and ready):
+                cls.disarm_reply_interrupt("语音音乐等待结束")
+
+    @classmethod
+    async def play_voice_music(cls, keyword=None):
+        try:
+            sequence = cls.voice_action_seq
+            if keyword is None:
+                await cls.play_random_music(voice_sequence=sequence)
+            else:
+                await cls.play_local_music_by_keyword(keyword, voice_sequence=sequence)
+        except asyncio.CancelledError:
+            logger.info("语音点歌已取消：收到新的语音指令")
+            raise
+        except Exception:
+            logger.exception("语音点歌接管失败")
+        finally:
+            cls.disarm_reply_interrupt("语音点歌任务结束")
+
+    @classmethod
+    async def announce_voice_results(cls, text):
+        # 等在途暂停完成，再播报数量；期间仍拦截非本次提示的云端指令。
+        async with cls.reply_interrupt_lock:
+            cls.voice_announcement_text = text
+        try:
+            await speak_text(text, resume_previous=False)
+            logger.info("本地点歌数量提示已结束，不恢复旧音乐")
+        finally:
+            cls.voice_announcement_text = ""
 
     @classmethod
     async def _speak_text(cls, text: str):
@@ -320,7 +429,8 @@ class App:
     @classmethod
     async def _play_music_url(cls, url: str):
         cls.disarm_reply_interrupt("即将发送播放请求")
-        return await play_music_url(url)
+        async with cls.reply_interrupt_lock:
+            return await play_music_url(url)
 
     @classmethod
     async def _schedule_auto_resume_after_whitelist(cls, normalized_text: str, raw_text: str):
@@ -475,6 +585,7 @@ class App:
 
     @classmethod
     async def clear_queue(cls, stop_device: bool = True) -> int:
+        cls.voice_action_seq += 1
         async with cls.local_music_lock:
             return await cls._clear_queue_unlocked(stop_device=stop_device)
 
@@ -580,13 +691,15 @@ class App:
                 logger.exception("曲库索引定时刷新异常: %s", exc)
 
     @classmethod
-    async def play_local_music_by_keyword(cls, keyword: str):
+    async def play_local_music_by_keyword(cls, keyword: str, voice_sequence=None):
         if not cls.searcher.has_dirs():
             await cls._speak_text("本地音乐目录还没有配置")
             return
 
         logger.info("收到搜索请求: 关键词=%s", keyword)
-        files = await asyncio.to_thread(cls.searcher.find, keyword)
+        files = await asyncio.to_thread(cls.searcher.find, keyword, phonetic_fallback=voice_sequence is not None)
+        if voice_sequence is not None and voice_sequence != cls.voice_action_seq:
+            return
         count = len(files)
         if count == 0:
             await cls._speak_text(f"没有找到包含{keyword}的歌曲")
@@ -594,11 +707,19 @@ class App:
             return
 
         songs = await asyncio.to_thread(cls._build_song_items, files, cls.music_server)
+        if voice_sequence is not None and voice_sequence != cls.voice_action_seq:
+            logger.info("语音搜索结果已过期，取消播放")
+            return
         if not songs:
             await cls._speak_text("没有可播放的歌曲，无法解析音频时长")
             logger.warning("搜索结果存在但无可播放歌曲: 关键词=%s", keyword)
             return
-        cleared_count = await cls.clear_queue(stop_device=True)
+        if voice_sequence is not None:
+            cleared_count = len(cls.play_queue) + (1 if cls.current_song else 0)
+            await cls.prepare_voice_playlist(keep_interrupt=True)
+            voice_sequence = cls.voice_action_seq
+        else:
+            cleared_count = await cls.clear_queue(stop_device=True)
         logger.info(
             "搜索命中并替换队列: 关键词=%s 命中=%d 清空旧队列=%d",
             keyword,
@@ -606,9 +727,14 @@ class App:
             cleared_count,
         )
         cls._log_queue(songs)
-        await cls._speak_text(f"好的，找到{count}首歌曲")
+        if voice_sequence is None:
+            await cls._speak_text(f"好的，找到{count}首歌曲")
+        else:
+            await cls.announce_voice_results(f"好的，找到{len(songs)}首歌曲")
 
         async with cls.local_music_lock:
+            if voice_sequence is not None and voice_sequence != cls.voice_action_seq:
+                return
             cls.play_queue = songs
             first_song = cls.play_queue.pop(0)
             logger.info(
@@ -620,13 +746,15 @@ class App:
             await cls._start_song_unlocked(first_song, trigger="搜索播放")
 
     @classmethod
-    async def play_random_music(cls, repeat: int = 1):
+    async def play_random_music(cls, repeat: int = 1, voice_sequence=None):
         if not cls.searcher.has_dirs():
             await cls._speak_text("本地音乐目录还没有配置")
             return
 
         logger.info("收到随机播放请求")
         files = await asyncio.to_thread(cls.searcher.random_pick)
+        if voice_sequence is not None and voice_sequence != cls.voice_action_seq:
+            return
         count = len(files)
         if count == 0:
             await cls._speak_text("曲库为空，无法随机播放")
@@ -634,18 +762,31 @@ class App:
             return
 
         songs = await asyncio.to_thread(cls._build_song_items, files, cls.music_server)
+        if voice_sequence is not None and voice_sequence != cls.voice_action_seq:
+            logger.info("语音随机播放结果已过期，取消播放")
+            return
         if not songs:
             await cls._speak_text("没有可播放的歌曲，无法解析音频时长")
             logger.warning("随机结果存在但无可播放歌曲")
             return
         repeat = max(1, min(20, int(repeat)))
         songs *= repeat
-        cleared_count = await cls.clear_queue(stop_device=True)
+        if voice_sequence is not None:
+            cleared_count = len(cls.play_queue) + (1 if cls.current_song else 0)
+            await cls.prepare_voice_playlist(keep_interrupt=True)
+            voice_sequence = cls.voice_action_seq
+        else:
+            cleared_count = await cls.clear_queue(stop_device=True)
         logger.info("随机选歌并替换队列: 命中=%d 清空旧队列=%d", count, cleared_count)
         cls._log_queue(songs)
-        await cls._speak_text(f"好的，随机播放{count}首歌曲")
+        if voice_sequence is None:
+            await cls._speak_text(f"好的，随机播放{count}首歌曲")
+        else:
+            await cls.announce_voice_results(f"好的，随机播放{count}首歌曲")
 
         async with cls.local_music_lock:
+            if voice_sequence is not None and voice_sequence != cls.voice_action_seq:
+                return
             cls.play_queue = songs
             first_song = cls.play_queue.pop(0)
             logger.info(

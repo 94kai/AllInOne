@@ -102,7 +102,7 @@ class MusicIndexer:
             path, _, size, mtime_ns = item
             prev = previous_map.get(path)
             if prev and prev.size == size and prev.mtime_ns == mtime_ns:
-                reused.append(prev)
+                reused.append(prev.with_pinyin())
             else:
                 pending.append(item)
 
@@ -140,4 +140,4 @@ class MusicIndexer:
             album_lower=metadata.album.lower(),
             size=size,
             mtime_ns=mtime_ns,
-        )
+        ).with_pinyin()

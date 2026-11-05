@@ -201,6 +201,7 @@
                 <div class="music-library-tabs" role="tablist" aria-label="音乐资料库">
                   <button class="active" type="button" data-library-tab="playlist">播放列表 <span id="music-playlist-count">0</span></button>
                   <button type="button" data-library-tab="search">搜索曲库</button>
+                  <button type="button" data-library-tab="automation">定时播放</button>
                   <button type="button" data-library-tab="favorites">我喜欢 <span id="music-favorites-count">0</span></button>
                 </div>
                 <section class="music-library-panel" data-library-panel="playlist">
@@ -211,6 +212,21 @@
                   <form class="music-search" id="music-search-form"><input id="music-query" type="search" maxlength="100" placeholder="搜索歌名、歌手或专辑" autocomplete="off"><button class="primary-button" type="submit">搜索</button></form>
                   <div class="music-search-meta"><span id="music-search-note">输入关键词搜索本地曲库</span><button class="secondary-button" id="music-add-all" type="button" hidden>全部加入列表</button></div>
                   <div class="music-track-list" id="music-results"><div class="empty-state">输入关键词搜索曲库</div></div>
+                </section>
+                <section class="music-library-panel" data-library-panel="automation" id="music-automation" hidden>
+                  <p id="music-auto-status">正在读取配置</p><button class="secondary-button" id="music-auto-refresh" type="button">刷新配置</button>
+                  <h3>歌单</h3>
+                  <form id="music-auto-list-form" class="music-auto-form"><input id="music-auto-name" required maxlength="40" placeholder="新增歌单名称" aria-label="歌单名称"><button type="submit">添加歌单</button></form>
+                  <div class="music-auto-form"><select id="music-auto-list" aria-label="编辑歌单"></select><button id="music-auto-import" type="button">导入当前播放列表</button><button id="music-auto-list-rename" type="button">改名</button><button id="music-auto-list-delete" type="button">删除歌单</button></div>
+                  <div id="music-auto-songs" class="music-auto-scroll"></div>
+                  <form id="music-auto-search" class="music-auto-form"><input id="music-auto-query" required maxlength="100" placeholder="搜索歌曲加入歌单" aria-label="搜索歌曲"><button type="submit">搜索</button></form><div id="music-auto-hits" class="music-auto-scroll"></div>
+                  <h3>每天定时 / 语音触发</h3><p>规则作用于上方选中的音箱。时间与提示词至少填写一个；提示词忽略空格和标点，整句匹配，不含“小爱同学”唤醒词。触发后替换当前播放队列。</p>
+                  <form id="music-auto-rule-form" class="music-auto-rule-form"><input id="music-auto-rule-id" type="hidden">
+                    <label>歌单<select id="music-auto-rule-list" required></select></label><label>每天几点（北京时间，可留空）<input id="music-auto-time" type="time"></label>
+                    <label>提示词（可留空）<input id="music-auto-phrase" maxlength="80" placeholder="例如：播放睡前歌单"></label>
+                    <label>播放轮数<input id="music-auto-repeat" type="number" min="1" max="20" value="1" required></label><label><input id="music-auto-enabled" type="checkbox" checked>启用规则</label>
+                    <div class="music-auto-form"><button type="submit">保存规则</button><button id="music-auto-rule-cancel" type="button">取消编辑 / 新建</button></div>
+                  </form><div id="music-auto-rules"></div>
                 </section>
                 <section class="music-library-panel" data-library-panel="favorites" hidden>
                   <div class="music-list-toolbar"><div><strong>我喜欢</strong><span>两台音箱共享这份收藏</span></div><button class="secondary-button" id="music-play-favorites" type="button">播放全部</button></div>
@@ -289,7 +305,8 @@
       <label>搜索/播放数量<input id="music-config-limit" type="number" min="1" max="100" required></label>
       <label>自动刷新间隔（秒，0 为关闭）<input id="music-config-interval" type="number" min="0" required></label>
       <label>播放关键词（每行一个）<textarea id="music-config-play-keywords" rows="2" required></textarea></label>
-      <label>停止关键词（每行一个）<textarea id="music-config-stop-keywords" rows="3" required></textarea></label>
+      <label><span id="music-config-builtin-stop-label">内置停止关键词</span><textarea id="music-config-builtin-stop-keywords" rows="5" readonly></textarea><small>始终生效，随项目版本维护；支持“小爱同学，请关机吧”等表达。</small></label>
+      <label>附加停止关键词（每行一个）<textarea id="music-config-stop-keywords" rows="3"></textarea><small>最多 20 条，保存于当前音箱配置。删除附加词不会停用上方内置词。</small></label>
       <label>刷新关键词（每行一个）<textarea id="music-config-refresh-keywords" rows="2" required></textarea></label>
       <label>随机播放关键词（每行一个）<textarea id="music-config-random-keywords" rows="2" required></textarea></label>
       <div class="form-actions"><button type="button" class="secondary-button" data-music-close>取消</button><button class="primary-button" type="submit">保存并重启</button></div>

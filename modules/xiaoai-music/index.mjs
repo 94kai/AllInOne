@@ -1,3 +1,4 @@
+import { MusicAutomation } from './automation.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -13,9 +14,9 @@ function json(res, status, body) {
   res.end(payload);
 }
 
-async function body(req) {
+async function body(req, limit = 64 * 1024) {
   const chunks = []; let size = 0;
-  for await (const chunk of req) { size += chunk.length; if (size > 64 * 1024) throw Object.assign(new Error('请求内容过大'), { status: 413 }); chunks.push(chunk); }
+  for await (const chunk of req) { size += chunk.length; if (size > limit) throw Object.assign(new Error('请求内容过大'), { status: 413 }); chunks.push(chunk); }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { throw Object.assign(new Error('请求内容不是有效 JSON'), { status: 400 }); }
 }
 
@@ -29,6 +30,7 @@ export class XiaoAiMusicModule {
     this.config = null;
     this.library = { favorites: [], playlists: {}, announcements: {} };
     this.shuttingDown = false;
+    this.automation = new MusicAutomation(this);
   }
 
   async initialize() {
@@ -42,6 +44,7 @@ export class XiaoAiMusicModule {
       playlists: this.library.playlists && typeof this.library.playlists === 'object' ? this.library.playlists : {},
       announcements: this.library.announcements && typeof this.library.announcements === 'object' ? this.library.announcements : {}
     };
+    await this.automation.initialize();
     await this.save();
     for (const profile of this.config.profiles) this.start(profile);
   }
@@ -79,6 +82,8 @@ export class XiaoAiMusicModule {
     return {
       id: profile.id, name: profile.name, ws_port: profile.ws_port, api_port: profile.api_port,
       listener_enabled: profile.listenerEnabled,
+      automation_file: this.automation.file,
+      automation_state_file: path.join(this.dataDir, `${profile.id}-automation-state.json`),
       music: {
         music_dirs: profile.musicDirs, supported_audio_extensions: ['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg'],
         search: { max_results: profile.maxResults, refresh_interval_sec: profile.refreshInterval, index_file: path.join(this.dataDir, `${profile.id}-index.json`) },
@@ -203,6 +208,8 @@ export class XiaoAiMusicModule {
       }));
       json(res, 200, { profiles }); return true;
     }
+    if (url.pathname === `${base}/automation` && req.method === 'GET') { if (this.automation.error) throw Object.assign(new Error(this.automation.error), { status: 503 }); json(res, 200, this.automation.data); return true; }
+    if (url.pathname === `${base}/automation` && req.method === 'PUT') { json(res, 200, await this.automation.update(await body(req, 2 * 1024 * 1024))); return true; }
     const match = url.pathname.match(/^\/api\/modules\/xiaoai-music\/profiles\/([^/]+)(?:\/(.+))?$/);
     if (!match) { json(res, 404, { error: '小爱音乐接口不存在' }); return true; }
     const profile = this.profile(decodeURIComponent(match[1]));

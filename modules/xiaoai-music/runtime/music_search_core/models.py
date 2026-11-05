@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from dataclasses import dataclass
+from dataclasses import replace
+import os
+import re
+
+from music_search_core.phonetics import PINYIN_VERSION, lazy_pinyin, phonetic_key
 
 
 @dataclass(frozen=True)
@@ -20,6 +25,30 @@ class IndexedSong:
     album_lower: str = ""
     size: int = 0
     mtime_ns: int = 0
+    name_pinyin: str = ""
+    title_pinyin: str = ""
+    artist_pinyin: str = ""
+    album_pinyin: str = ""
+    pinyin_version: int = 0
+
+    @property
+    def search_album(self) -> str:
+        # 仅在标签缺失时用直接父目录兜底，不改写文件中的专辑标签。
+        return self.album_lower.strip() or os.path.basename(os.path.dirname(self.path)).lower()
+
+    def with_pinyin(self) -> "IndexedSong":
+        if self.pinyin_version == PINYIN_VERSION or lazy_pinyin is None:
+            return self
+        name = os.path.splitext(self.name_lower)[0]
+        name = re.sub(r"^\d+[\s._-]+", "", name)
+        return replace(
+            self,
+            name_pinyin=phonetic_key(name),
+            title_pinyin=phonetic_key(self.title_lower),
+            artist_pinyin=phonetic_key(self.artist_lower),
+            album_pinyin=phonetic_key(self.search_album),
+            pinyin_version=PINYIN_VERSION,
+        )
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -44,4 +73,9 @@ class IndexedSong:
             album_lower=str(data.get("album_lower", "")),
             size=size,
             mtime_ns=mtime_ns,
-        )
+            name_pinyin=str(data.get("name_pinyin") or ""),
+            title_pinyin=str(data.get("title_pinyin") or ""),
+            artist_pinyin=str(data.get("artist_pinyin") or ""),
+            album_pinyin=str(data.get("album_pinyin") or ""),
+            pinyin_version=data.get("pinyin_version", 0),
+        ).with_pinyin()

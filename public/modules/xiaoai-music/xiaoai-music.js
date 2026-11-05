@@ -1,3 +1,4 @@
+import { setupMusicAutomation } from './automation.js';
 const musicState = { profiles: [], selected: localStorage.getItem('allinone-music-speaker') || '', results: [], playlist: [], favorites: [], libraryTab: 'playlist' };
 const musicNode = id => document.getElementById(id);
 const musicApiBase = ({ 'devstudio.xuekai.top': 'https://aio.xuekai.top:8888' })[location.hostname]
@@ -21,7 +22,8 @@ function repeatStorageKey() { return `allinone-music-repeat:${musicState.selecte
 function storedMusicRepeat() { return Math.max(1, Math.min(20, Number(localStorage.getItem(repeatStorageKey())) || 1)); }
 function musicRepeat() { const input = musicNode('music-repeat'); const value = Math.max(1, Math.min(20, Number(input.value) || 1)); input.value = value; localStorage.setItem(repeatStorageKey(), String(value)); return value; }
 function switchLibraryTab(tab) {
-  musicState.libraryTab = ['playlist', 'search', 'favorites'].includes(tab) ? tab : 'playlist';
+  if (tab === 'automation') musicAutomation.load();
+  musicState.libraryTab = ['playlist', 'search', 'favorites', 'automation'].includes(tab) ? tab : 'playlist';
   document.querySelectorAll('[data-library-tab]').forEach(node => node.classList.toggle('active', node.dataset.libraryTab === musicState.libraryTab));
   document.querySelectorAll('[data-library-panel]').forEach(node => { node.hidden = node.dataset.libraryPanel !== musicState.libraryTab; });
 }
@@ -45,6 +47,7 @@ function renderCollections() {
   musicNode('music-playlist').innerHTML = musicState.playlist.map((song, index) => trackMarkup(song, index, 'playlist')).join('') || '<div class="empty-state">播放列表为空，去搜索歌曲添加吧</div>';
   musicNode('music-favorites').innerHTML = musicState.favorites.map((song, index) => trackMarkup(song, index, 'favorites')).join('') || '<div class="empty-state">还没有喜欢的歌曲</div>';
   renderMusicResults();
+  if (musicState.libraryTab === 'automation') musicAutomation.load();
 }
 
 function renderMusicResults() {
@@ -64,6 +67,7 @@ function renderMusicStatus() {
   musicNode('music-queue-badge').textContent = profile.queueSize || 0;
   musicNode('music-runtime-queue-count').textContent = queue.length ? `正在播放 1 首 · 后续 ${Math.max(0, queue.length - 1)} 首` : '当前没有待播歌曲';
   musicNode('music-runtime-queue-list').innerHTML = queue.map((song, index) => `<button class="music-queue-item${song.current ? ' current' : ''}" type="button" data-queue-index="${index}"${song.current ? ' disabled' : ''}><span class="music-queue-order">${song.current ? 'NOW' : String(index).padStart(2, '0')}</span><strong>${escapeMusic(song.name || '未命名歌曲')}</strong><small>${song.durationSec ? `${Math.round(song.durationSec)} 秒` : ''}</small></button>`).join('') || '<div class="music-queue-empty">播放歌曲后，这里会显示接下来播放的内容。</div>';
+  musicAutomation.renderStatus();
   musicNode('music-volume').value = profile.volume ?? 30;
   musicNode('music-volume-value').value = profile.volume ?? 30;
 }
@@ -156,13 +160,20 @@ musicNode('music-runtime-queue-list').addEventListener('click', async event => {
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') musicNode('music-runtime-queue').classList.remove('open'); });
 
-musicNode('music-settings').addEventListener('click', () => { const profile = selectedProfile(); musicNode('music-config-name').value = profile.name; musicNode('music-config-dirs').value = profile.musicDirs.join('\n'); musicNode('music-config-url').value = profile.baseUrl; musicNode('music-config-limit').value = profile.maxResults; musicNode('music-config-interval').value = profile.refreshInterval; musicNode('music-config-play-keywords').value = profile.playKeywords.join('\n'); musicNode('music-config-stop-keywords').value = profile.stopKeywords.join('\n'); musicNode('music-config-refresh-keywords').value = profile.refreshKeywords.join('\n'); musicNode('music-config-random-keywords').value = profile.randomKeywords.join('\n'); musicNode('music-config-modal').hidden = false; });
+musicNode('music-settings').addEventListener('click', () => { const profile = selectedProfile();
+  if (!profile) return;
+  const builtin = profile.builtinStopKeywords;
+  musicNode('music-config-builtin-stop-label').textContent = Array.isArray(builtin) ? `内置停止关键词（${builtin.length} 条）` : '内置停止关键词';
+  musicNode('music-config-builtin-stop-keywords').value = Array.isArray(builtin) ? builtin.join('\n') : '暂未读取到内置词表，请等待音箱服务连接后重新打开配置。';
+ musicNode('music-config-name').value = profile.name; musicNode('music-config-dirs').value = profile.musicDirs.join('\n'); musicNode('music-config-url').value = profile.baseUrl; musicNode('music-config-limit').value = profile.maxResults; musicNode('music-config-interval').value = profile.refreshInterval; musicNode('music-config-play-keywords').value = profile.playKeywords.join('\n'); musicNode('music-config-stop-keywords').value = profile.stopKeywords.join('\n'); musicNode('music-config-refresh-keywords').value = profile.refreshKeywords.join('\n'); musicNode('music-config-random-keywords').value = profile.randomKeywords.join('\n'); musicNode('music-config-modal').hidden = false; });
 document.querySelectorAll('[data-music-close]').forEach(node => node.addEventListener('click', () => { musicNode('music-config-modal').hidden = true; }));
 musicNode('music-config-form').addEventListener('submit', async event => {
   event.preventDefault(); const profile = selectedProfile();
   try { const lines = id => musicNode(id).value.split(/\r?\n/); await musicRequest(`/api/modules/xiaoai-music/profiles/${encodeURIComponent(profile.id)}`, { method: 'PUT', body: JSON.stringify({ name: musicNode('music-config-name').value, musicDirs: lines('music-config-dirs'), baseUrl: musicNode('music-config-url').value, maxResults: Number(musicNode('music-config-limit').value), refreshInterval: Number(musicNode('music-config-interval').value), playKeywords: lines('music-config-play-keywords'), stopKeywords: lines('music-config-stop-keywords'), refreshKeywords: lines('music-config-refresh-keywords'), randomKeywords: lines('music-config-random-keywords') }) }); musicNode('music-config-modal').hidden = true; musicToast('配置已保存，音箱服务正在重启'); setTimeout(() => loadMusicProfiles().then(loadMusicCollection), 3500); }
   catch (error) { musicToast(error.message); }
 });
+
+const musicAutomation = setupMusicAutomation({ request: musicRequest, state: musicState, node: musicNode, escape: escapeMusic, toast: musicToast, profileApi, title: songTitle });
 
 document.addEventListener('xiaoai:refresh', () => loadMusicProfiles().then(loadMusicCollection));
 switchLibraryTab('playlist');

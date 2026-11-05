@@ -21,6 +21,7 @@ parser.add_argument("--config", required=True)
 args = parser.parse_args()
 PROFILE = load_config(args.config)
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(args.config)), "python-deps"))
 # 音乐核心和小爱协议实现均来自当前模块，不依赖外部项目目录。
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "runtime"))
 os.environ["XIAOAI_WS_PORT"] = str(PROFILE["ws_port"])
@@ -30,7 +31,9 @@ sys.modules["config"] = config_module
 
 import open_xiaoai_server  # noqa: E402
 from main import App, on_event_callback  # noqa: E402
+from automation_runtime import Automation
 from player_control import set_volume  # noqa: E402
+from stop_commands import RULES as STOP_COMMAND_RULES
 
 
 class Runtime:
@@ -39,6 +42,7 @@ class Runtime:
     listener_enabled = False
     api_server = None
     stopping = False
+    automation = None
 
     @classmethod
     async def set_listener(cls, enabled):
@@ -46,6 +50,7 @@ class Runtime:
         if cls.listener_enabled:
             open_xiaoai_server.register_fn("on_event", on_event_callback)
         else:
+            App.voice_action_seq += 1
             open_xiaoai_server.unregister_fn("on_event")
         # 播放、暂停和音量控制也复用这条 WebSocket，因此关闭语音识别时仍保持连接。
         if not cls.listener_task or cls.listener_task.done():
@@ -69,9 +74,11 @@ class Runtime:
             queue.append({"name": current.name, "path": current.path, "durationSec": current.duration_sec, "current": True})
         queue.extend({"name": song.name, "path": song.path, "durationSec": song.duration_sec, "current": False} for song in App.play_queue[:99])
         return {
+            "automation": cls.automation.status() if cls.automation else None,
             "id": PROFILE["id"],
             "name": PROFILE["name"],
             "listenerEnabled": cls.listener_enabled,
+            "builtinStopKeywords": STOP_COMMAND_RULES["commands"],
             "speakerConnected": open_xiaoai_server.is_connected(),
             "librarySize": App.searcher.index_size(),
             "refreshing": App.index_refresh_lock.locked(),
@@ -259,12 +266,17 @@ async def main():
     threading.Thread(target=Runtime.api_server.serve_forever, daemon=True).start()
     await Runtime.set_listener(PROFILE.get("listener_enabled", True))
     await App.refresh_music_index("启动刷新")
+    Runtime.automation = Automation(PROFILE, Runtime.play_paths, open_xiaoai_server.is_connected, App.arm_reply_interrupt, App.prepare_voice_playlist)
+    App.automation_voice_handler = Runtime.automation.voice
+    Runtime.automation.timer = asyncio.create_task(Runtime.automation.run())
     if App.refresh_interval_sec > 0:
         App.index_refresh_task = asyncio.create_task(App.run_index_refresh_loop())
     stop_event = asyncio.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         Runtime.loop.add_signal_handler(sig, stop_event.set)
     await stop_event.wait()
+    if Runtime.automation:
+        await Runtime.automation.stop()
     await Runtime.stop_connection()
     if App.index_refresh_task:
         App.index_refresh_task.cancel()

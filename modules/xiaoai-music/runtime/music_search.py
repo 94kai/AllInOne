@@ -7,6 +7,7 @@ import threading
 from music_search_core import MusicIndexer
 from music_search_core import MusicIndexStore
 from music_search_core import MusicSearchEngine
+from stop_commands import is_stop_command
 
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,7 @@ def extract_play_keyword(text: str, play_keywords: list[str] | None = None) -> s
 
 
 def is_stop_play_command(text: str, stop_keywords: set[str] | list[str] | None = None) -> bool:
-    normalized = text.strip().replace(" ", "")
-    keyword_set = set(stop_keywords or [])
-    return normalized in keyword_set
+    return is_stop_command(text, stop_keywords)
 
 
 class MusicSearcher:
@@ -67,7 +66,7 @@ class MusicSearcher:
         self._store.save(songs)
         return len(songs)
 
-    def find(self, keyword: str) -> list[str]:
+    def find(self, keyword: str, phonetic_fallback: bool = False) -> list[str]:
         keyword_lower = normalize_keyword(keyword).lower()
         if not keyword_lower:
             return []
@@ -78,6 +77,11 @@ class MusicSearcher:
             keyword_lower,
             self.max_results,
         )
+        if total_matches == 0 and phonetic_fallback:
+            total_matches, selected = self._search_engine.search_phonetic_with_count(
+                snapshot, keyword_lower, self.max_results,
+            )
+            logger.info("语音同音字兜底: 关键词=%s 总匹配=%d 返回=%d", keyword, total_matches, len(selected))
         logger.info(
             "内存搜索完成: 关键词=%s 总索引=%d 总匹配=%d 返回=%d 返回上限=%d",
             keyword,
