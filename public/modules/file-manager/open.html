@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>文件查看 · Allinone</title>
+  <link rel="stylesheet" href="/modules/file-manager/open.css">
+</head>
+<body>
+  <main>
+    <header><h1 id="title">文件查看</h1><a id="download" hidden>下载文件</a><button id="copy" type="button">复制链接</button></header>
+    <p id="status" role="status">正在读取文件…</p>
+    <input id="search" type="search" placeholder="搜索歌曲、歌手或其他内容" aria-label="搜索文件内容" hidden>
+    <div id="content" tabindex="0" aria-label="文件内容"></div>
+    <button id="more" type="button" hidden>显示更多</button>
+  </main>
+  <script type="module" src="/modules/file-manager/open.js"></script>
+</body>
+</html>

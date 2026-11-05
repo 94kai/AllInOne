@@ -1,9 +1,12 @@
+import { setupFileShares } from './modules/file-manager/shares.js';
+import { setupFilePaths } from './modules/file-manager/paths.js';
 const icons = {
   home: '<path d="M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5H15v-7H9v7H3.5a.5.5 0 0 1-.5-.5z"/>',
   folder: '<path d="M3 6.5h6l2 2h10v9.8a1.7 1.7 0 0 1-1.7 1.7H4.7A1.7 1.7 0 0 1 3 18.3z"/><path d="M3 9V5.7A1.7 1.7 0 0 1 4.7 4H9l2 2h7"/>',
   'folder-plus': '<path d="M3 6.5h6l2 2h10v9.8a1.7 1.7 0 0 1-1.7 1.7H4.7A1.7 1.7 0 0 1 3 18.3z"/><path d="M3 9V5.7A1.7 1.7 0 0 1 4.7 4H9l2 2h7M12 12v5M9.5 14.5h5"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
   speed: '<path d="M4.2 18a9 9 0 1 1 15.6 0"/><path d="m12 15 4.5-5.5"/><circle cx="12" cy="15" r="1.5"/>',
+  health: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/><path d="M3 12h5l2-4 4 8 2-4h5"/>',
   checklist: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m7.5 8 1.5 1.5L12 6M14 8h3M7.5 14 9 15.5l3-3.5M14 14h3"/>',
   pass: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h5M8 16h8"/><circle cx="17" cy="12" r="2"/>',
   receipt: '<path d="M6 3h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
@@ -37,17 +40,17 @@ document.querySelectorAll('[data-icon]').forEach(node => {
   node.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[node.dataset.icon] || icons.file}</svg>`;
 });
 
-const allowedViews = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'bill-manager', 'terminal', 'xiaoai', 'music'];
+const allowedViews = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'bill-manager', 'health', 'terminal', 'xiaoai', 'music'];
 const urlView = new URLSearchParams(location.search).get('view');
 const storedView = localStorage.getItem('allinone-active-view');
 const state = { view: allowedViews.includes(urlView) ? urlView : allowedViews.includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0, upload: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'bill-manager', 'terminal', 'xiaoai', 'music'];
+const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'bill-manager', 'health', 'terminal', 'xiaoai', 'music'];
 function readNavOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('allinone-nav-order') || '[]');
-    return saved.length === defaultNavOrder.length && defaultNavOrder.every(view => saved.includes(view)) ? saved : defaultNavOrder;
+    return Array.isArray(saved) ? [...new Set(saved.filter(view => defaultNavOrder.includes(view))), ...defaultNavOrder.filter(view => !saved.includes(view))] : defaultNavOrder;
   } catch { return defaultNavOrder; }
 }
 let navOrder = readNavOrder();
@@ -154,7 +157,7 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'bill-manager' ? '账单管理' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'bill-manager' ? '账单管理' : state.view === 'health' ? '健康数据' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
   $('#bm-export').hidden = state.view !== 'bill-manager';
   document.body.classList.toggle('xiaoai-active', state.view === 'xiaoai');
 }
@@ -182,6 +185,7 @@ function switchView(view) {
   setGreeting(); window.scrollTo({ top: 0, behavior: 'smooth' });
   if (view === 'home' && Date.now() - state.lastSystemUpdate > 60000) loadSystem();
   if (view === 'files' && !state.entries.length) loadFiles();
+  if (view === 'health') document.dispatchEvent(new CustomEvent('health:refresh'));
   if (view === 'checklist') document.dispatchEvent(new CustomEvent('checklist:refresh'));
   if (view === 'beijing-pass') document.dispatchEvent(new CustomEvent('beijing-pass:refresh'));
   if (view === 'bill-manager') document.dispatchEvent(new CustomEvent('bill-manager:refresh'));
@@ -225,7 +229,7 @@ function renderFiles() {
   container.innerHTML = state.entries.map(entry => {
     const icon = icons[entry.type] || icons.file;
     const date = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(entry.modified));
-    return `<div class="file-row" data-file-path="${escapeHtml(entry.path)}" role="button" tabindex="0"><span class="file-main"><span class="file-icon ${entry.type}"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="file-name">${escapeHtml(entry.name)}</span></span><span class="file-size">${entry.type === 'folder' ? '文件夹' : formatBytes(entry.size)}</span><span class="file-date">${date}</span><button class="path-copy" type="button" data-copy-path="${escapeHtml(entry.absolutePath)}" aria-label="复制 ${escapeHtml(entry.name)} 的路径" title="复制路径"><svg viewBox="0 0 24 24">${icons.copy}</svg></button><button class="file-delete" type="button" data-delete-path="${escapeHtml(entry.path)}" aria-label="删除 ${escapeHtml(entry.name)}" title="删除"><svg viewBox="0 0 24 24">${icons.trash}</svg></button></div>`;
+    return `<div class="file-row" data-file-path="${escapeHtml(entry.path)}" role="button" tabindex="0"><span class="file-main"><span class="file-icon ${entry.type}"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="file-name">${escapeHtml(entry.name)}</span></span><span class="file-size">${entry.type === 'folder' ? '文件夹' : formatBytes(entry.size)}</span><span class="file-date">${date}</span><button class="path-copy" type="button" data-copy-path="${escapeHtml(entry.absolutePath)}" aria-label="复制 ${escapeHtml(entry.name)} 的路径" title="复制路径"><svg viewBox="0 0 24 24">${icons.copy}</svg></button>${entry.type !== 'folder' ? `<button class="file-share" type="button" data-share-path="${escapeHtml(entry.path)}" aria-label="获取 ${escapeHtml(entry.name)} 的分享链接" title="获取分享链接">链接</button>` : '<span class="file-share-placeholder"></span>'}<button class="file-delete" type="button" data-delete-path="${escapeHtml(entry.path)}" aria-label="删除 ${escapeHtml(entry.name)}" title="删除"><svg viewBox="0 0 24 24">${icons.trash}</svg></button></div>`;
   }).join('');
 }
 
@@ -517,3 +521,14 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') { if
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.view === 'home' && Date.now() - state.lastSystemUpdate > 60000) loadSystem(); });
 
 initialize();
+
+setupFilePaths({ request, toast, onSaved: async roots => {
+  state.roots = roots;
+  if (!roots.some(root => root.id === state.root)) { state.root = roots[0].id; state.path = ''; }
+  $('#root-select').innerHTML = roots.map(root => `<option value="${escapeHtml(root.id)}">${escapeHtml(root.label)}</option>`).join('');
+  $('#root-select').value = state.root;
+  state.entries = [];
+  await Promise.all([loadFiles(state.path), loadFavorites()]);
+} });
+
+setupFileShares({ request, toast, target: path => ({ root: state.root, path }), absoluteUrl: url => new URL(apiUrl(url), location.href).href });

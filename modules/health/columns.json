@@ -1,0 +1,154 @@
+[
+  {
+    "id": "c0",
+    "label": "日期"
+  },
+  {
+    "id": "c1",
+    "label": "医院／来源"
+  },
+  {
+    "id": "c2",
+    "label": "总胆固醇 TC（mmol/L）"
+  },
+  {
+    "id": "c3",
+    "label": "甘油三酯 TG（mmol/L）"
+  },
+  {
+    "id": "c4",
+    "label": "HDL-C（mmol/L）"
+  },
+  {
+    "id": "c5",
+    "label": "LDL-C（mmol/L）"
+  },
+  {
+    "id": "c6",
+    "label": "小而密 LDL（mmol/L）"
+  },
+  {
+    "id": "c7",
+    "label": "非 HDL 胆固醇（mmol/L）"
+  },
+  {
+    "id": "c8",
+    "label": "残粒胆固醇（mmol/L）"
+  },
+  {
+    "id": "c9",
+    "label": "血压"
+  },
+  {
+    "id": "c10",
+    "label": "左侧颈动脉"
+  },
+  {
+    "id": "c11",
+    "label": "右侧颈动脉"
+  },
+  {
+    "id": "c13",
+    "label": "左侧锁骨下动脉"
+  },
+  {
+    "id": "c14",
+    "label": "右侧锁骨下动脉"
+  },
+  {
+    "id": "c15",
+    "label": "左侧椎动脉内径（mm）"
+  },
+  {
+    "id": "c16",
+    "label": "右侧椎动脉内径（mm）"
+  },
+  {
+    "id": "c17",
+    "label": "其他血管／血流"
+  },
+  {
+    "id": "c18",
+    "label": "肝脏超声"
+  },
+  {
+    "id": "c19",
+    "label": "同型半胱氨酸（μmol/L）"
+  },
+  {
+    "id": "c20",
+    "label": "高敏／超敏 C 反应蛋白（mg/L）"
+  },
+  {
+    "id": "c21",
+    "label": "葡萄糖（mmol/L）"
+  },
+  {
+    "id": "c22",
+    "label": "糖化白蛋白（%）"
+  },
+  {
+    "id": "c23",
+    "label": "ALT（U/L）"
+  },
+  {
+    "id": "c24",
+    "label": "AST（U/L）"
+  },
+  {
+    "id": "c25",
+    "label": "GGT（U/L）"
+  },
+  {
+    "id": "c26",
+    "label": "肌酸激酶 CK（U/L）"
+  },
+  {
+    "id": "c27",
+    "label": "CK-MB 活性（U/L）"
+  },
+  {
+    "id": "c28",
+    "label": "CK-MB 质量（ng/mL）"
+  },
+  {
+    "id": "c29",
+    "label": "乳酸脱氢酶（U/L）"
+  },
+  {
+    "id": "c30",
+    "label": "肌酐（μmol/L）"
+  },
+  {
+    "id": "c31",
+    "label": "尿素（mmol/L）"
+  },
+  {
+    "id": "c32",
+    "label": "尿酸（μmol/L）"
+  },
+  {
+    "id": "c33",
+    "label": "胱抑素 C（mg/L）"
+  },
+  {
+    "id": "c34",
+    "label": "eGFR（mL/min/1.73m²）"
+  },
+  {
+    "id": "c35",
+    "label": "叶酸（ng/mL）"
+  },
+  {
+    "id": "c36",
+    "label": "维生素 B12（pg/mL）"
+  },
+  {
+    "id": "c37",
+    "label": "治疗／生活方式记录"
+  },
+  {
+    "id": "c38",
+    "label": "备注"
+  }
+]

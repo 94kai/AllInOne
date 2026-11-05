@@ -1,3 +1,5 @@
+import { FileShares } from './modules/file-manager/shares.mjs';
+import { FilePaths } from './modules/file-manager/paths.mjs';
 import http from 'node:http';
 import { readFile, readdir, stat, lstat, realpath, mkdir, writeFile, rename, rm, statfs, link, unlink } from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -13,6 +15,7 @@ import { handleSpeedTest } from './modules/speed-test/index.mjs';
 import { XiaoAiMusicModule } from './modules/xiaoai-music/index.mjs';
 import { XiaoAiAssistantModule } from './modules/xiaoai-assistant/index.mjs';
 import { MusicDownloadModule } from './modules/music-download/index.mjs';
+import { HealthModule } from './modules/health/index.mjs';
 import { ChecklistModule } from './modules/checklist/index.mjs';
 import { TerminalModule } from './modules/terminal/index.mjs';
 import { BeijingPassModule } from './modules/beijing-pass/index.mjs';
@@ -89,11 +92,16 @@ function parseRoots() {
   });
 }
 
-const roots = parseRoots();
+const defaultFileRoots = parseRoots();
+const filePaths = new FilePaths(dataDir, defaultFileRoots);
+let roots = await filePaths.initialize();
+const fileShares = new FileShares(dataDir, resolveSafePath);
+await fileShares.initialize();
 const xiaoAiMusic = new XiaoAiMusicModule({ projectDir, dataDir });
 const xiaoAiAssistant = new XiaoAiAssistantModule({ dataDir, xiaoAiMusic });
-const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
+const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: defaultFileRoots });
 const checklist = new ChecklistModule({ dataDir });
+const health = new HealthModule({ dataDir });
 const beijingPass = new BeijingPassModule({ dataDir });
 const billManager = new BillManagerModule({ dataDir });
 
@@ -107,7 +115,7 @@ function isAllowedWebSocketOrigin(req) {
   } catch { return false; }
 }
 
-const terminal = new TerminalModule({ roots, isAuthenticated, isAllowedOrigin: isAllowedWebSocketOrigin });
+const terminal = new TerminalModule({ roots: defaultFileRoots, isAuthenticated, isAllowedOrigin: isAllowedWebSocketOrigin });
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -197,7 +205,7 @@ function allowPreviewRequest(req, res) {
     if (!isLocalPreview && !previewOrigins.has(originUrl.origin)) return false;
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Vary', 'Origin');
     return true;
@@ -518,10 +526,23 @@ async function apiHandler(req, res, url) {
   if (await xiaoAiMusic.handle(req, res, url)) return;
   if (await xiaoAiAssistant.handle(req, res, url)) return;
   if (await musicDownload.handle(req, res, url)) return;
+  if (await health.handle(req, res, url)) return;
   if (await checklist.handle(req, res, url)) return;
   if (await beijingPass.handle(req, res, url)) return;
   if (await billManager.handle(req, res, url)) return;
   if (await terminal.handle(req, res, url)) return;
+  if (url.pathname === '/api/modules/file-manager/config' && req.method === 'GET') return json(res, 200, filePaths.get());
+  if (url.pathname === '/api/modules/file-manager/config' && req.method === 'PUT') {
+    const config = await filePaths.update(await readBody(req));
+    roots = config.roots;
+    return json(res, 200, config);
+  }
+  if (url.pathname === '/api/modules/file-manager/shares/lookup' && req.method === 'GET') return json(res, 200, await fileShares.lookup({ root: url.searchParams.get('root'), path: url.searchParams.get('path') || '' }));
+  if (url.pathname === '/api/modules/file-manager/shares' && req.method === 'GET') return json(res, 200, await fileShares.list());
+  if (url.pathname === '/api/modules/file-manager/shares' && req.method === 'POST') return json(res, 200, await fileShares.create(await readBody(req)));
+  const shareDelete = url.pathname.match(/^\/api\/modules\/file-manager\/shares\/([\w-]+)$/);
+  if (shareDelete && req.method === 'PATCH') return json(res, 200, await fileShares.update(shareDelete[1], await readBody(req)));
+  if (shareDelete && req.method === 'DELETE') return json(res, 200, await fileShares.revoke(shareDelete[1]));
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, { roots: roots.map(({ id, label }) => ({ id, label })) });
   }
@@ -653,6 +674,12 @@ async function requestHandler(req, res) {
     }
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+    const publicShare = url.pathname.match(/^\/share\/([\w-]+)$/);
+    if (publicShare) {
+      if (!['GET', 'HEAD'].includes(req.method)) return error(res, 405, '只支持读取分享文件');
+      return await fileShares.serve(req, res, publicShare[1]);
+    }
+
     if (url.pathname === '/login') {
       if (!accessToken) {
         res.writeHead(303, { Location: '/' }); return res.end();
@@ -718,6 +745,7 @@ await xiaoAiMusic.initialize();
 await xiaoAiAssistant.initialize();
 await musicDownload.initialize();
 await checklist.initialize();
+await health.initialize();
 await beijingPass.initialize();
 await billManager.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
@@ -732,6 +760,7 @@ async function shutdown() {
   shuttingDown = true;
   httpServer.close();
   terminal.shutdown();
+  health.shutdown();
   beijingPass.shutdown();
   await xiaoAiMusic.shutdown();
   process.exit(0);
