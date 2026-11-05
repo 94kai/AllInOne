@@ -17,6 +17,10 @@
 .terminal-keys { padding: 6px; display: grid; gap: 5px; background: #202731; border-top: 1px solid #303945; user-select: none; -webkit-user-select: none; }
 .terminal-key-row { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
 .terminal-key-row::-webkit-scrollbar { display: none; }
+.terminal-keyboard-toolbar { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.terminal-keyboard-toolbar .terminal-vim-keys { min-width: 0; flex: 1; }
+#terminal-keyboard-toggle { flex: none; min-height: 38px; padding: 0 10px; color: #fff; border: 1px solid #5578a8; border-radius: 8px; background: #405e85; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+#terminal-keyboard-toggle:active { background: #5578a8; }
 .terminal-key-row button { min-width: 43px; height: 38px; padding: 0 10px; flex: none; color: #e2e8ef; border: 1px solid #414b58; border-radius: 8px; background: #303945; font: 650 13px ui-monospace,SFMono-Regular,Menlo,monospace; touch-action: manipulation; }
 .terminal-key-row button:active { transform: translateY(1px); background: #46515f; }
 .terminal-key-row .primary-key { color: #fff; background: #405e85; border-color: #5578a8; }
@@ -39,6 +43,7 @@ body.terminal-active .topbar { display: none; }
 body.terminal-active .main-content { max-width: none; padding: 0; }
 body.terminal-active .terminal-page.active { height: 100svh; display: flex; flex-direction: column; animation: none; }
 body.terminal-active .terminal-stage { min-height: 0; height: auto; flex: 1; }
+body.terminal-active .terminal-session-bar,body.terminal-active .terminal-keys { flex-shrink: 0; }
 
 @media (min-width: 681px) {
   body.terminal-active .main-content { width: calc(100% - 224px); }

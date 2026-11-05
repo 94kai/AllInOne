@@ -6,6 +6,10 @@ if (view) {
   const connection = document.querySelector('#terminal-connection');
   const dot = document.querySelector('#terminal-dot');
   const keyboard = document.querySelector('#terminal-keyboard');
+  const keyboardToggle = document.querySelector('#terminal-keyboard-toggle');
+  const keyboardModeKey = 'allinone-terminal-keyboard-mode';
+  const touchKeyboard = matchMedia('(pointer: coarse)').matches;
+  let keyboardMode = localStorage.getItem(keyboardModeKey) === 'native' ? 'native' : 'builtin';
   const fontKey = 'allinone-terminal-font-size';
   let socket = null, reconnectTimer = 0, reconnectAttempts = 0;
   let ctrlPending = false, altPending = false, shiftPending = false;
@@ -21,11 +25,20 @@ if (view) {
   terminal.loadAddon(fit);
   terminal.loadAddon(new window.WebLinksAddon.WebLinksAddon());
   terminal.open(screen);
-  // 手机和平板只使用页面内键盘，桌面仍可使用物理键盘。
-  if (matchMedia('(pointer: coarse)').matches) {
-    terminal.textarea.inputMode = 'none';
-    terminal.textarea.readOnly = true;
-    terminal.textarea.setAttribute('virtualkeyboardpolicy', 'manual');
+  function applyKeyboardMode(focus = false) {
+    const native = keyboardMode === 'native';
+    const suppressNative = touchKeyboard && !native;
+    // 保留 xterm 自带的输入法组合事件处理，中文候选确认后由 onData 发送。
+    if (focus) terminal.blur();
+    terminal.textarea.inputMode = suppressNative ? 'none' : 'text';
+    terminal.textarea.readOnly = suppressNative;
+    terminal.textarea.setAttribute('virtualkeyboardpolicy', suppressNative ? 'manual' : 'auto');
+    keyboard.hidden = native;
+    keyboardToggle.textContent = native ? '内置' : '原生';
+    keyboardToggle.setAttribute('aria-label', `当前使用${native ? '原生' : '内置'}键盘，切换到${native ? '内置' : '原生'}键盘`);
+    keyboardToggle.title = native ? '切换到内置 QWERTY 键盘' : '切换到系统键盘，可使用中文输入法';
+    if (focus) terminal.focus();
+    requestAnimationFrame(() => { if (active()) fit.fit(); });
   }
 
   function active() { return view.classList.contains('active'); }
@@ -96,7 +109,7 @@ if (view) {
     loadStatus().then(status => { if (status?.ready && !socket) connect(); });
     requestAnimationFrame(() => fit.fit());
   }
-  function deactivate() { document.body.classList.remove('terminal-active'); disconnect(); }
+  function deactivate() { terminal.blur(); document.body.classList.remove('terminal-active'); disconnect(); }
 
   terminal.onData(data => {
     if (ctrlPending && data.length === 1) {
@@ -199,6 +212,18 @@ if (view) {
   }
   let repeatDelay = 0, repeatTimer = 0;
   function stopRepeat() { clearTimeout(repeatDelay); clearInterval(repeatTimer); repeatDelay = 0; repeatTimer = 0; }
+  keyboardToggle.addEventListener('click', () => {
+    stopRepeat();
+    ctrlPending = false; altPending = false; shiftPending = false;
+    keyboardMode = keyboardMode === 'native' ? 'builtin' : 'native';
+    localStorage.setItem(keyboardModeKey, keyboardMode);
+    renderKeyboard();
+    applyKeyboardMode(true);
+  });
+  // 点击快捷键时保留输入焦点，避免系统键盘收起后再次弹出。
+  view.querySelector('.terminal-vim-keys').addEventListener('pointerdown', event => {
+    if (event.target.closest('button')) event.preventDefault();
+  });
   keyboard.addEventListener('pointerdown', event => {
     const button = event.target.closest('.terminal-kb-key');
     if (!button) return;
@@ -213,6 +238,7 @@ if (view) {
     const button = event.target.closest('.terminal-kb-key'); if (button) pressKeyboardKey(button);
   });
   renderKeyboard();
+  applyKeyboardMode();
 
   // Android 浏览器的布局视口不会总随软键盘缩小，直接使用 visualViewport 保证快捷栏留在键盘上方。
   const resize = () => {
