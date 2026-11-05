@@ -16,7 +16,6 @@ import { MusicDownloadModule } from './modules/music-download/index.mjs';
 import { ChecklistModule } from './modules/checklist/index.mjs';
 import { TerminalModule } from './modules/terminal/index.mjs';
 import { BeijingPassModule } from './modules/beijing-pass/index.mjs';
-import { ShellCrashModule } from './modules/shellcrash/index.mjs';
 import { BillManagerModule } from './modules/bill-manager/index.mjs';
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url));
@@ -96,7 +95,6 @@ const xiaoAiAssistant = new XiaoAiAssistantModule({ dataDir, xiaoAiMusic });
 const musicDownload = new MusicDownloadModule({ projectDir, dataDir, fileRoots: roots });
 const checklist = new ChecklistModule({ dataDir });
 const beijingPass = new BeijingPassModule({ dataDir });
-const shellCrash = new ShellCrashModule({ dataDir });
 const billManager = new BillManagerModule({ dataDir });
 
 function isAllowedWebSocketOrigin(req) {
@@ -522,7 +520,6 @@ async function apiHandler(req, res, url) {
   if (await musicDownload.handle(req, res, url)) return;
   if (await checklist.handle(req, res, url)) return;
   if (await beijingPass.handle(req, res, url)) return;
-  if (await shellCrash.handle(req, res, url)) return;
   if (await billManager.handle(req, res, url)) return;
   if (await terminal.handle(req, res, url)) return;
   if (url.pathname === '/api/config' && req.method === 'GET') {
@@ -722,7 +719,6 @@ await xiaoAiAssistant.initialize();
 await musicDownload.initialize();
 await checklist.initialize();
 await beijingPass.initialize();
-await shellCrash.initialize();
 await billManager.initialize();
 const httpServer = http.createServer(requestHandler).listen(port, host, () => {
   console.log(`Allinone 已启动：http://${host}:${port}`);
@@ -737,7 +733,6 @@ async function shutdown() {
   httpServer.close();
   terminal.shutdown();
   beijingPass.shutdown();
-  shellCrash.shutdown();
   await xiaoAiMusic.shutdown();
   process.exit(0);
 }

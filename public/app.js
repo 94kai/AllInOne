@@ -7,7 +7,6 @@ const icons = {
   checklist: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m7.5 8 1.5 1.5L12 6M14 8h3M7.5 14 9 15.5l3-3.5M14 14h3"/>',
   pass: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h5M8 16h8"/><circle cx="17" cy="12" r="2"/>',
   receipt: '<path d="M6 3h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
-  shield: '<path d="M12 2 20 5v6c0 5.2-3.3 9.1-8 11-4.7-1.9-8-5.8-8-11V5z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
   terminal: '<path d="m5 7 4 5-4 5M11 17h8"/><rect x="2.5" y="3.5" width="19" height="17" rx="2"/>',
   trash: '<path d="M4 7h16M9 3h6l1 4H8zM6 7l1 14h10l1-14M10 11v6M14 11v6"/>',
   server: '<rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.01M8 17.5h.01M12 6.5h5M12 17.5h5"/>',
@@ -38,13 +37,13 @@ document.querySelectorAll('[data-icon]').forEach(node => {
   node.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[node.dataset.icon] || icons.file}</svg>`;
 });
 
-const allowedViews = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'shellcrash', 'bill-manager', 'terminal', 'xiaoai', 'music'];
+const allowedViews = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'bill-manager', 'terminal', 'xiaoai', 'music'];
 const urlView = new URLSearchParams(location.search).get('view');
 const storedView = localStorage.getItem('allinone-active-view');
 const state = { view: allowedViews.includes(urlView) ? urlView : allowedViews.includes(storedView) ? storedView : 'home', roots: [], root: '', path: '', absolutePath: '', entries: [], bookmarks: [], favorites: [], grid: false, showHidden: localStorage.getItem('allinone-show-hidden') === '1', lastSystemUpdate: 0, upload: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'shellcrash', 'bill-manager', 'terminal', 'xiaoai', 'music'];
+const defaultNavOrder = ['home', 'files', 'speed', 'checklist', 'beijing-pass', 'bill-manager', 'terminal', 'xiaoai', 'music'];
 function readNavOrder() {
   try {
     const saved = JSON.parse(localStorage.getItem('allinone-nav-order') || '[]');
@@ -155,7 +154,7 @@ function formatBytes(value) {
 }
 
 function setGreeting() {
-  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'shellcrash' ? '网络守护' : state.view === 'bill-manager' ? '账单管理' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
+  $('#page-title').textContent = state.view === 'home' ? '概览' : state.view === 'files' ? '文件空间' : state.view === 'links' ? '地址导航' : state.view === 'speed' ? '网络测速' : state.view === 'checklist' ? '清单' : state.view === 'beijing-pass' ? '进京证' : state.view === 'bill-manager' ? '账单管理' : state.view === 'terminal' ? '终端' : state.view === 'xiaoai' ? '小爱同学' : '音乐';
   $('#bm-export').hidden = state.view !== 'bill-manager';
   document.body.classList.toggle('xiaoai-active', state.view === 'xiaoai');
 }
@@ -185,7 +184,6 @@ function switchView(view) {
   if (view === 'files' && !state.entries.length) loadFiles();
   if (view === 'checklist') document.dispatchEvent(new CustomEvent('checklist:refresh'));
   if (view === 'beijing-pass') document.dispatchEvent(new CustomEvent('beijing-pass:refresh'));
-  if (view === 'shellcrash') document.dispatchEvent(new CustomEvent('shellcrash:refresh'));
   if (view === 'bill-manager') document.dispatchEvent(new CustomEvent('bill-manager:refresh'));
 }
 

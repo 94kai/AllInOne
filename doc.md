@@ -2,15 +2,14 @@
 
 ## 产品结构
 
-allinone 定位为 NAS 的统一轻量控制台，界面包含五个稳定入口：
+allinone 定位为 NAS 的统一轻量控制台，界面包含以下主要入口：
 
 1. **概览**：查看按需系统快照与常用地址。
 2. **文件**：浏览被授权的文件根目录并预览内容。
 3. **测速**：按需测试浏览器与 Allinone 服务之间的上传、下载链路速度。
 4. **清单**：维护可反复勾选恢复的出行物品清单，并支持拼音和自定义排序。
-5. **网络守护**：监控当前 ShellCrash 节点访问 ChatGPT 的能力，按连续失败阈值自动选择可用线路。
-6. **账单管理**：解析账单模板和微信支付记录，按代码中的固定规则展示导出预览。
-7. **音乐**：在同一个主导航入口内切换“小爱播放”和“音乐下载”；前者搜索本地曲库并控制两台小爱音箱，后者从多个公开来源搜索歌曲、下载到暂存目录并批量移动到受控音乐目录。
+5. **账单管理**：解析账单模板和微信支付记录，按代码中的固定规则展示导出预览。
+6. **音乐**：在同一个主导航入口内切换“小爱播放”和“音乐下载”；前者搜索本地曲库并控制两台小爱音箱，后者从多个公开来源搜索歌曲、下载到暂存目录并批量移动到受控音乐目录。
 
 后续的小工具和迁移进来的程序可以继续作为同级模块扩展，避免把所有功能塞进首页。
 
@@ -97,7 +96,6 @@ allinone/
 | `TEXT_PREVIEW_LIMIT` | `524288` | 文本预览字节上限 |
 | `FILE_UPLOAD_LIMIT` | `10737418240` | 单个上传文件的字节上限，默认 10 GiB |
 | `SMARTCTL_PATH` | `/usr/sbin/smartctl` | 硬盘 SMART 温度读取程序或受控包装脚本路径 |
-| `SHELLCRASH_CONFIG_PATH` | `/etc/ShellCrash/config.yaml` | ShellCrash 运行配置路径，用于服务端读取控制地址和密钥 |
 | `XIAOAI_PYTHON` | `python3` | 小爱音乐 worker 使用的 Python 3 可执行文件 |
 | `MUSIC_DOWNLOAD_DIR` | `data/music-download/downloads` | 音乐下载模块的默认暂存目录 |
 | `MUSIC_MOVE_ROOTS` | 复用 `FILE_ROOTS` | 允许批量移动到的根目录，格式为 `名称:绝对路径`，多个用逗号分隔 |
@@ -199,19 +197,6 @@ Linux CPU/NVMe 温度优先从 `sensors -j` 读取，SATA/USB 硬盘温度通过
 前端先测试下载、再测试上传，每一阶段通常持续约 4 秒并以 `MB/s` 实时显示估算值；用户可随时停止。单轮下载从 2 MB 预热数据开始，随后使用 8 MB 数据块；上传使用浏览器内存生成的 4 MB 随机数据块，避免压缩代理影响结果。完整测试约产生 6–90 MB 传输量。结果表示浏览器到当前 Allinone 服务（包括中间反向代理）的实际链路吞吐量，不等同于运营商公网测速；反向代理若启用了额外缓存、限速或缓冲也会影响结果。
 
 模块责任边界：后端位于 `modules/speed-test/`，仅负责生成/接收临时字节流；前端位于 `public/modules/speed-test/`，独立管理测速运行状态、取消控制与结果展示。模块无配置项、无持久化数据、无定时器或后台任务，也不读写其他模块状态。
-
-### ShellCrash 网络守护
-
-模块后端位于 `modules/shellcrash/`，前端位于 `public/modules/shellcrash/`，持久化状态位于 `data/shellcrash/state.json`。模块只通过 Mihomo `external-controller` 公开 API 查询代理组、测试指定节点和切换节点，不修改 ShellCrash YAML 或订阅文件。控制接口密钥从 `SHELLCRASH_CONFIG_PATH` 读取，仅保存在服务端内存中，不通过 Allinone API 返回。
-
-守护默认启用，每 180 秒通过当前节点检测 `https://chatgpt.com/cdn-cgi/trace`。连续失败 3 次后，以每批 8 个的并发度测试当前代理组内的真实节点，过滤 DIRECT、REJECT 和订阅提示条目，然后切换到检测成功且延迟最低的节点。切换后默认冷却 600 秒；冷却期间仍检测和记录失败，但不再次切换。定时器使用非阻塞生命周期，Allinone 关闭时会清理；ShellCrash 不可用、配置无法读取或所有节点失败只会更新本模块错误状态。
-
-接口：
-
-- `GET /api/modules/shellcrash`：读取公开配置、当前节点、候选节点、运行状态和最近 30 条记录，不返回控制密钥。
-- `POST /api/modules/shellcrash/check`：立即检测；若当前节点失败且不在冷却期，则立刻执行候选测试和自动切换。
-- `POST /api/modules/shellcrash/switch`：校验目标属于当前代理组后手动切换，并进入冷却期。
-- `PUT /api/modules/shellcrash/config`：更新启用状态、60–3600 秒检测间隔、1–10 次失败阈值及 60–86400 秒冷却期。
 
 ### 账单管理
 
