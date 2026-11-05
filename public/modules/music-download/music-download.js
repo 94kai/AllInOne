@@ -1,4 +1,4 @@
-const downloadState = { results: [], files: [], jobs: [], roots: [], polling: 0, qrPolling: 0, qrId: '', directoryPath: '', directoryParent: null };
+const downloadState = { hideUnavailable: false, searching: false, results: [], files: [], jobs: [], roots: [], polling: 0, qrPolling: 0, qrId: '', directoryPath: '', directoryParent: null };
 const downloadNode = id => document.getElementById(id);
 const downloadApiBase = ({ 'devstudio.xuekai.top': 'https://aio.xuekai.top:8888' })[location.hostname]
   || (location.port === '8787' ? `${location.protocol}//${location.hostname}:2006` : '');
@@ -15,14 +15,28 @@ function formatDownloadDuration(value) { const seconds = Math.max(0, Math.round(
 function downloadToast(message) { const node = downloadNode('toast'); node.textContent = message; node.classList.add('show'); setTimeout(() => node.classList.remove('show'), 2500); }
 
 function renderDownloadResults() {
-  downloadNode('download-results').innerHTML = downloadState.results.map((song, index) => `<article class="download-song"><span class="download-source ${song.source==='netease-auth'?'authorized':''}" title="来源：${escapeDownload(song.sourceLabel || song.source)}">${escapeDownload(song.sourceLabel || song.source || '未知')}</span><div class="download-song-info"><strong>${escapeDownload(song.name || '未命名歌曲')}</strong><span>${escapeDownload([song.artist,song.album].filter(Boolean).join(' · ') || '未知歌手')} · ${formatDownloadDuration(song.duration)}${song.actualQuality ? ` · ${escapeDownload(song.actualQuality.toUpperCase())} · ${escapeDownload((song.fileType||'').toUpperCase())}` : ''}</span></div><button class="primary-button" data-download-result="${index}" type="button">下载</button></article>`).join('') || '<div class="empty-state">没有找到确认可下载的结果</div>';
+  const unavailable = downloadState.results.filter(song => song.downloadable === false).length;
+  const toggle = downloadNode('download-toggle-unavailable');
+  toggle.disabled = downloadState.searching || !unavailable;
+  toggle.textContent = downloadState.hideUnavailable ? `显示不可下载（${unavailable}）` : `一键隐藏不可下载（${unavailable}）`;
+  toggle.setAttribute('aria-pressed', String(downloadState.hideUnavailable));
+  downloadNode('download-results').innerHTML = downloadState.results.map((song, index) => {
+    const unavailable = song.downloadable === false;
+    if (downloadState.hideUnavailable && unavailable) return '';
+    return `<article class="download-song"><span class="download-source ${song.source==='netease-auth'?'authorized':''}" title="来源：${escapeDownload(song.sourceLabel || song.source)}">${escapeDownload(song.sourceLabel || song.source || '未知')}</span><div class="download-song-info"><strong>${escapeDownload(song.name || '未命名歌曲')}</strong><span>${escapeDownload([song.source === 'netease-voice' ? `上传者：${song.uploader || '未知'}` : song.artist,song.album].filter(Boolean).join(' · ') || '未知歌手')} · ${formatDownloadDuration(song.duration)}${song.actualQuality ? ` · ${escapeDownload(song.actualQuality.toUpperCase())}` : ''}${song.fileType ? ` · ${escapeDownload(song.fileType.toUpperCase())}` : ''}</span>${unavailable ? `<span class="download-unavailable-reason">${escapeDownload(song.unavailableReason || '暂时无法下载')}</span>` : ''}</div><button class="${unavailable ? 'secondary-button' : 'primary-button'}" data-download-result="${index}" type="button">${unavailable ? '尝试下载' : '下载'}</button></article>`;
+  }).join('') || `<div class="empty-state">${downloadState.hideUnavailable && unavailable ? '匹配结果暂时都不可下载，点击“显示不可下载”查看' : '没有找到歌名包含完整关键词的结果；请检查歌名，或缩短关键词'}</div>`;
 }
+
+downloadNode('download-toggle-unavailable').addEventListener('click', () => {
+  downloadState.hideUnavailable = !downloadState.hideUnavailable;
+  renderDownloadResults();
+});
 
 function renderDownloadLibrary() {
   const active = downloadState.jobs.filter(job => ['queued','running'].includes(job.status));
   downloadNode('download-library-note').textContent = `${downloadState.files.length} 首${active.length ? ` · ${active.length} 个任务进行中` : ''}`;
   const jobs = downloadState.jobs.filter(job => job.status !== 'finished').map(job => `<div class="download-job ${job.status}"><strong>${escapeDownload(job.title)}</strong><span>${job.status==='queued'?'等待下载':job.status==='running'?'正在下载':escapeDownload(job.error || '下载失败')}</span></div>`).join('');
-  const files = downloadState.files.map(file => `<div class="download-file"><input type="checkbox" value="${escapeDownload(file.name)}" aria-label="选择 ${escapeDownload(file.name)}"><div class="download-file-info"><strong>${escapeDownload(file.name)}</strong><span>${new Date(file.modified).toLocaleString('zh-CN')} · ${formatDownloadBytes(file.size)}</span></div><div class="download-file-actions"><button class="secondary-button" data-download-play="${escapeDownload(file.name)}" type="button">试听</button><button class="secondary-button" data-download-metadata="${escapeDownload(file.name)}" type="button">元信息</button><button class="secondary-button danger" data-download-delete="${escapeDownload(file.name)}" type="button">删除</button></div></div>`).join('');
+  const files = downloadState.files.map(file => `<div class="download-file"><input type="checkbox" value="${escapeDownload(file.name)}" aria-label="选择 ${escapeDownload(file.name)}"><div class="download-file-info"><strong>${escapeDownload(file.name)}</strong><span>${new Date(file.modified).toLocaleString('zh-CN')} · ${formatDownloadBytes(file.size)}</span></div><div class="download-file-actions"><button class="secondary-button" data-download-play="${escapeDownload(file.name)}" type="button">试听</button><button class="secondary-button" data-download-metadata="${escapeDownload(file.name)}" type="button">元信息</button><button class="secondary-button" data-download-rename="${escapeDownload(file.name)}" type="button">重命名</button><button class="secondary-button danger" data-download-delete="${escapeDownload(file.name)}" type="button">删除</button></div></div>`).join('');
   downloadNode('download-library').innerHTML = jobs + files || '<div class="empty-state">下载目录为空，先搜索一首歌曲吧</div>';
   updateMoveButton();
 }
@@ -53,20 +67,56 @@ async function loadDownloads() {
 
 downloadNode('download-search-form').addEventListener('submit', async event => {
   event.preventDefault(); const query = downloadNode('download-query').value.trim(); if (!query) return;
+  downloadState.searching = true;
+  downloadState.results = [];
+  downloadNode('download-toggle-unavailable').disabled = true;
   downloadNode('download-results').innerHTML = '<div class="empty-state">正在搜索多个音乐来源，首次使用可能需要安装组件…</div>';
   downloadNode('download-search-note').textContent = '正在搜索';
-  try { const quality = downloadNode('download-quality').value; downloadState.results = (await downloadRequest(`/api/modules/music-download/search?q=${encodeURIComponent(query)}&quality=${encodeURIComponent(quality)}`)).items; renderDownloadResults(); downloadNode('download-search-note').textContent = `找到 ${downloadState.results.length} 条结果`; }
-  catch (error) { downloadNode('download-results').innerHTML = `<div class="empty-state">${escapeDownload(error.message)}</div>`; downloadNode('download-search-note').textContent = '搜索失败'; downloadToast(error.message); }
+  try {
+    const quality = downloadNode('download-quality').value;
+    const data = await downloadRequest(`/api/modules/music-download/search?q=${encodeURIComponent(query)}&quality=${encodeURIComponent(quality)}`);
+    downloadState.results = data.items;
+    downloadState.searching = false;
+    renderDownloadResults();
+    downloadNode('download-search-note').textContent = [
+      `找到 ${data.items.length} 条结果`,
+      data.sources?.length ? `搜索来源：${data.sources.join('、')}` : '',
+      data.excludedByTitle ? `公开来源排除 ${data.excludedByTitle} 条歌名不匹配结果` : '',
+      data.unavailable ? `其中 ${data.unavailable} 条暂不可下载` : '',
+      ...(data.warnings || [])
+    ].filter(Boolean).join(' · ');
+  }
+  catch (error) { downloadState.searching = false; downloadNode('download-results').innerHTML = `<div class="empty-state">${escapeDownload(error.message)}</div>`; downloadNode('download-search-note').textContent = '搜索失败'; downloadToast(error.message); }
 });
 downloadNode('download-results').addEventListener('click', async event => {
   const button = event.target.closest('[data-download-result]'); if (!button) return;
   const song = downloadState.results[Number(button.dataset.downloadResult)]; if (!song) return;
   button.disabled = true; button.textContent = '已加入';
   try { await downloadRequest('/api/modules/music-download/downloads', { method:'POST', body:JSON.stringify(song) }); downloadToast('已加入下载队列'); await loadDownloads(); }
-  catch (error) { button.disabled = false; button.textContent = '下载'; downloadToast(error.message); }
+  catch (error) { button.disabled = false; button.textContent = song.downloadable === false ? '尝试下载' : '下载'; downloadToast(error.message); }
 });
 downloadNode('download-library').addEventListener('change', updateMoveButton);
 downloadNode('download-library').addEventListener('click', async event => {
+  const renameButton = event.target.closest('[data-download-rename]');
+  if (renameButton) {
+    const filename = renameButton.dataset.downloadRename;
+    const stem = filename.slice(0, filename.lastIndexOf('.'));
+    const name = prompt('修改文件名（不含扩展名，音频格式保持不变）', stem);
+    if (name === null || name.trim() === stem) return;
+    renameButton.disabled = true;
+    try {
+      const data = await downloadRequest('/api/modules/music-download/downloads/rename', { method: 'POST', body: JSON.stringify({ filename, name }) });
+      if (downloadState.playingFile === filename) {
+        const audio = downloadNode('download-player-audio');
+        audio.pause(); audio.removeAttribute('src'); audio.load();
+        downloadState.playingFile = ''; downloadNode('download-player').hidden = true;
+      }
+      downloadToast(data.warning || '文件已重命名');
+      await loadDownloads();
+    } catch (error) { downloadToast(error.message); }
+    finally { renameButton.disabled = false; }
+    return;
+  }
   const metadata = event.target.closest('[data-download-metadata]'); if (metadata) return openDownloadMetadata(metadata.dataset.downloadMetadata);
   const play = event.target.closest('[data-download-play]');
   if (play) {
@@ -173,6 +223,9 @@ async function openDownloadMetadata(filename) {
   downloadNode('download-metadata-modal').hidden = false; document.body.style.overflow = 'hidden';
   try {
     const meta = (await downloadRequest(`/api/modules/music-download/metadata?file=${encodeURIComponent(filename)}`)).metadata;
+    downloadNode('download-metadata-lyrics').value = meta.lyrics || '';
+    downloadNode('download-metadata-lyrics').disabled = !meta.lyricsSupported;
+    downloadNode('download-lyrics-note').textContent = meta.lyricsSupported ? '支持纯文本或 LRC，最多 12000 字；清空后保存可移除歌词。' : '当前格式暂不支持写入歌词';
     downloadNode('download-metadata-title').value = meta.title; downloadNode('download-metadata-artist').value = meta.artist; downloadNode('download-metadata-album').value = meta.album;
     downloadNode('download-metadata-date').value = meta.date; downloadNode('download-metadata-genre').value = meta.genre; downloadNode('download-metadata-track').value = meta.track;
     downloadNode('download-metadata-summary').textContent = `${meta.codec?.toUpperCase() || '音频'} · ${formatDownloadDuration(meta.duration)} · ${meta.bitrate ? `${Math.round(meta.bitrate/1000)} kbps` : '未知码率'} · ${meta.hasCover ? '已有封面' : '无封面'}${meta.sourceLabel ? ` · 来源 ${meta.sourceLabel}` : ''}`;
@@ -188,7 +241,7 @@ downloadNode('download-scrape').addEventListener('click', async () => {
     const data = await downloadRequest('/api/modules/music-download/scrape', { method:'POST', body:JSON.stringify({ filename:downloadNode('download-metadata-file').value, title, artist:downloadNode('download-metadata-artist').value.trim() }) });
     downloadNode('download-metadata-token').value = '';
     const preview = downloadNode('download-scrape-preview'); preview.hidden = false;
-    downloadNode('download-scrape-candidates').innerHTML = data.candidates.map((song, index) => `<button class="download-scrape-candidate" type="button" data-scrape-candidate="${index}">${song.coverUrl ? `<img src="${escapeDownload(song.coverUrl)}" alt="" referrerpolicy="no-referrer">` : '<span class="download-cover-empty">无封面</span>'}<span class="download-scrape-info"><strong>${escapeDownload(song.name)}</strong><span>${escapeDownload([song.artist,song.album].filter(Boolean).join(' · ') || '未知歌手')}</span><small>${escapeDownload(song.sourceLabel || song.source)} · ${formatDownloadDuration(song.duration)}</small></span></button>`).join('');
+    downloadNode('download-scrape-candidates').innerHTML = data.candidates.map((song, index) => `<button class="download-scrape-candidate" type="button" data-scrape-candidate="${index}">${song.coverUrl ? `<img src="${escapeDownload(song.coverUrl)}" alt="" referrerpolicy="no-referrer">` : '<span class="download-cover-empty">无封面</span>'}<span class="download-scrape-info"><strong>${escapeDownload(song.name)}</strong><span>${escapeDownload([song.source === 'netease-voice' ? `上传者：${song.uploader || '未知'}` : song.artist,song.album].filter(Boolean).join(' · ') || '未知歌手')}</span><small>${escapeDownload(song.sourceLabel || song.source)} · ${formatDownloadDuration(song.duration)} · ${escapeDownload(song.lyricsMessage || '')}</small></span></button>`).join('');
     preview._candidates = data.candidates;
     downloadToast(`找到 ${data.candidates.length} 个候选，请选择`);
   } catch (error) { downloadToast(error.message); }
@@ -200,13 +253,17 @@ downloadNode('download-scrape-candidates').addEventListener('click', event => {
   preview.querySelectorAll('.download-scrape-candidate').forEach(node => node.classList.toggle('selected', node === button));
   downloadNode('download-metadata-token').value = song.token;
   downloadNode('download-metadata-title').value = song.name || downloadNode('download-metadata-title').value; downloadNode('download-metadata-artist').value = song.artist || downloadNode('download-metadata-artist').value; downloadNode('download-metadata-album').value = song.album || downloadNode('download-metadata-album').value;
+  if (!downloadNode('download-metadata-lyrics').disabled) {
+    if (song.lyrics) downloadNode('download-metadata-lyrics').value = song.lyrics;
+    downloadNode('download-lyrics-note').textContent = song.lyricsMessage || '未获取到歌词，保留现有内容';
+  }
   downloadToast('已选择候选，请确认信息后保存');
 });
 downloadNode('download-metadata-form').addEventListener('submit', async event => {
   event.preventDefault(); const submit = event.submitter; if (submit) submit.disabled = true;
   const value = id => downloadNode(id).value;
   try {
-    await downloadRequest('/api/modules/music-download/metadata', { method:'PUT', body:JSON.stringify({ filename:value('download-metadata-file'), scrapeToken:value('download-metadata-token'), title:value('download-metadata-title'), artist:value('download-metadata-artist'), album:value('download-metadata-album'), date:value('download-metadata-date'), genre:value('download-metadata-genre'), track:value('download-metadata-track') }) });
+    await downloadRequest('/api/modules/music-download/metadata', { method:'PUT', body:JSON.stringify({ filename:value('download-metadata-file'), scrapeToken:value('download-metadata-token'), title:value('download-metadata-title'), artist:value('download-metadata-artist'), album:value('download-metadata-album'), date:value('download-metadata-date'), genre:value('download-metadata-genre'), track:value('download-metadata-track'), ...(downloadNode('download-metadata-lyrics').disabled ? {} : { lyrics:value('download-metadata-lyrics') }) }) });
     closeDownloadMetadata(); downloadToast('元信息已写入音频文件'); await loadDownloads();
   } catch (error) { downloadToast(error.message); }
   finally { if (submit) submit.disabled = false; }

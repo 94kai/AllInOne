@@ -1,8 +1,7 @@
 import crypto from 'node:crypto';
-import os from 'node:os';
 import path from 'node:path';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { access, chmod, copyFile, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
@@ -14,7 +13,7 @@ const apiPrefix = '/api/modules/music-download';
 const mediaGetVersion = '0.2.14';
 const audioExtensions = new Set(['.mp3', '.flac', '.m4a', '.aac', '.wav', '.ogg', '.ape', '.wma']);
 const audioMimeTypes = { '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.ape': 'audio/ape', '.wma': 'audio/x-ms-wma' };
-const sourceLabels = { migu: '咪咕音乐', netease: '网易云', qq: 'QQ 音乐', kugou: '酷狗音乐', kuwo: '酷我音乐', bilibili: 'Bilibili', douyin: '抖音', youtube: 'YouTube', qmkg: '全民 K 歌' };
+const sourceLabels = { migu: '咪咕音乐', netease: '网易云', 'netease-voice': '网易云声音', qq: 'QQ 音乐', kugou: '酷狗音乐', kuwo: '酷我音乐', bilibili: 'Bilibili', douyin: '抖音', youtube: 'YouTube', qmkg: '全民 K 歌' };
 const neteaseQualities = new Set(['standard', 'exhigh', 'lossless', 'hires', 'jyeffect', 'sky', 'jymaster']);
 const neteaseEapiKey = Buffer.from('e82ckenh8dichen8');
 
@@ -193,30 +192,67 @@ export class MusicDownloadModule {
     return { loggedIn: true };
   }
 
-  async resolveNeteaseSong(songId, quality) {
-    if (!this.neteaseCookie) throw httpError('请先登录网易云账号', 401);
+  async resolveNeteaseSong(songId, quality, voice = false) {
+    if (!voice && !this.neteaseCookie) throw httpError('请先登录网易云账号', 401);
     if (!neteaseQualities.has(quality)) throw httpError('不支持该网易云音质');
     const endpoint = 'https://interface3.music.163.com/eapi/song/enhance/player/url/v1';
     const result = await this.neteaseEapi(endpoint, { ids: [Number(songId)], level: quality, encodeType: 'flac', ...(quality === 'sky' ? { immerseType: 'c51' } : {}) });
     const audio = result.data?.[0];
     if (!audio?.url) throw httpError(`网易云未返回可下载地址${audio?.message ? `：${audio.message}` : '，可能没有版权或音质权益'}`, 404);
-    return { url: audio.url, type: String(audio.type || 'mp3').toLowerCase(), level: audio.level || quality, size: Number(audio.size) || 0 };
+    return { url: audio.url, type: String(audio.type || 'mp3').toLowerCase(), level: audio.level || (voice ? '' : quality), size: Number(audio.size) || 0 };
   }
 
-  async searchNetease(keyword, quality) {
+  async searchNetease(keyword, quality, titleOnly = true) {
     if (!this.neteaseCookie) return [];
     const response = await fetch('https://music.163.com/api/cloudsearch/pc', { method: 'POST', signal: AbortSignal.timeout(30000), headers: {
       'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Mozilla/5.0', Referer: 'https://music.163.com/', Cookie: this.neteaseCookie
-    }, body: new URLSearchParams({ s: keyword, type: '1', limit: '12' }) });
+    }, body: new URLSearchParams({ s: keyword, type: '1', limit: '50' }) });
     const result = await response.json();
-    const songs = result.result?.songs || [];
-    const checked = await Promise.all(songs.map(async song => {
+    if (!response.ok || result.code !== 200) throw httpError('网易云搜索失败，请检查登录状态或稍后重试', 502);
+    const songs = (result.result?.songs || []).filter(song => !titleOnly || String(song.name || '').toLowerCase().includes(keyword.toLowerCase()));
+    return Promise.all(songs.map(async song => {
+      const item = { id: `netease-${song.id}`, neteaseId: song.id, name: String(song.name || ''), artist: (song.ar || []).map(item => item.name).join('/'), album: String(song.al?.name || ''), duration: Number(song.dt) / 1000 || 0, url: `https://music.163.com/song?id=${song.id}`, source: 'netease-auth', sourceLabel: '网易云会员', requestedQuality: quality };
       try {
         const audio = await this.resolveNeteaseSong(song.id, quality);
-        return { id: `netease-${song.id}`, neteaseId: song.id, name: String(song.name || ''), artist: (song.ar || []).map(item => item.name).join('/'), album: String(song.al?.name || ''), duration: Number(song.dt) / 1000 || 0, url: `https://music.163.com/song?id=${song.id}`, source: 'netease-auth', sourceLabel: '网易云会员', requestedQuality: quality, actualQuality: audio.level, fileType: audio.type, fileSize: audio.size };
-      } catch { return null; }
+        return { ...item, downloadable: true, actualQuality: audio.level, fileType: audio.type, fileSize: audio.size };
+      } catch {
+        return { ...item, downloadable: false, unavailableReason: '网易云暂未提供所选音质的下载地址，或验证失败' };
+      }
     }));
-    return checked.filter(Boolean);
+  }
+
+  async resolveNeteaseVoice(programId) {
+    const result = await this.neteaseEapi('https://interface3.music.163.com/eapi/dj/program/detail', { id: programId });
+    const songId = result.program?.mainSong?.id;
+    if (result.code !== 200 || !Number.isSafeInteger(songId) || songId <= 0) throw httpError('网易云声音详情不可用', 502);
+    return this.resolveNeteaseSong(songId, 'exhigh', true);
+  }
+
+  async searchNeteaseVoices(keyword, titleOnly) {
+    const result = await this.neteaseEapi('https://interface3.music.163.com/eapi/search/voice/get', { keyword, scene: 'normal', limit: 50, offset: 0 });
+    if (result.code !== 200 || !Array.isArray(result.data?.resources)) throw httpError('网易云声音搜索失败', 502);
+    const items = result.data.resources.map(resource => {
+      const info = resource.baseInfo || {};
+      const programId = Number(info.id || resource.resourceId);
+      return { id: `netease-voice-${programId}`, programId, name: String(info.name || info.mainSong?.name || '').slice(0, 200),
+        artist: '', uploader: String(info.dj?.nickname || '').slice(0, 200), album: String(info.radio?.name || '').slice(0, 200),
+        duration: Number(info.duration || info.mainSong?.duration) / 1000 || 0,
+        url: `https://music.163.com/#/program?id=${programId}`, source: 'netease-voice', sourceLabel: '网易云声音',
+        coverUrl: /^https?:\/\//.test(String(info.coverUrl || '')) ? info.coverUrl : '' };
+    }).filter(item => Number.isSafeInteger(item.programId) && item.programId > 0 && (!titleOnly || item.name.toLowerCase().includes(keyword.toLowerCase()))).slice(0, 50);
+    let nextIndex = 0;
+    await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const item = items[nextIndex++];
+        try {
+          const audio = await this.resolveNeteaseVoice(item.programId);
+          Object.assign(item, { downloadable: true, actualQuality: audio.level, fileType: audio.type, fileSize: audio.size });
+        } catch {
+          Object.assign(item, { downloadable: false, unavailableReason: '声音地址暂不可用或验证失败，可尝试重新下载' });
+        }
+      }
+    }));
+    return items;
   }
 
   binaryPath() {
@@ -269,44 +305,65 @@ export class MusicDownloadModule {
     }
   }
 
-  async search(query, quality = 'lossless') {
+  async search(query, quality = 'lossless', { titleOnly = true, detailed = false } = {}) {
     const keyword = String(query || '').trim();
     if (!keyword || keyword.length > 100) throw httpError('搜索关键词长度必须为 1–100 个字符');
     if (!neteaseQualities.has(quality)) throw httpError('不支持该网易云音质');
-    const authorized = await this.searchNetease(keyword, quality);
     const publicSources = this.neteaseCookie ? this.sources.filter(source => source !== 'netease') : this.sources;
-    if (!publicSources.length) return authorized;
-    const output = await this.runMediaGet(['-k', keyword, '--searchType=song', `--sources=${publicSources.join(',')}`, '-m', '--infoFormat=json', '-l', 'silence'], 45000);
-    let items;
-    try { items = JSON.parse(output); } catch { throw httpError('媒体服务返回了无法识别的搜索结果', 502); }
-    if (!Array.isArray(items)) return [];
-    const candidates = items.slice(0, 50).map((item, index) => ({
+    const warnings = [];
+    const [memberResult, publicResult, voiceResult] = await Promise.allSettled([
+      this.searchNetease(keyword, quality, titleOnly),
+      publicSources.length ? this.runMediaGet(['-k', keyword, '--searchType=song', `--sources=${publicSources.join(',')}`, '-m', '--infoFormat=json', '-l', 'silence'], 45000) : Promise.resolve('[]'),
+      this.sources.includes('netease') ? this.searchNeteaseVoices(keyword, titleOnly) : Promise.resolve([])
+    ]);
+    const authorized = memberResult.status === 'fulfilled' ? memberResult.value : [];
+    if (memberResult.status === 'rejected') warnings.push('网易云会员搜索失败，请检查登录状态或稍后重试');
+    let rawItems = [];
+    if (publicResult.status === 'fulfilled') {
+      try {
+        rawItems = JSON.parse(publicResult.value);
+        if (!Array.isArray(rawItems)) throw new Error();
+      } catch { rawItems = []; warnings.push('公开来源返回了无法识别的搜索结果'); }
+    } else warnings.push('公开来源搜索失败，请稍后重试');
+    const matches = rawItems.filter(item => !titleOnly || String(item.Name || '').toLowerCase().includes(keyword.toLowerCase()));
+    const candidates = matches.slice(0, 50).map((item, index) => ({
       id: crypto.createHash('sha1').update(`${item.Url || ''}:${index}`).digest('hex').slice(0, 16),
       name: String(item.Name || '').slice(0, 200), artist: String(item.Artist || '').slice(0, 200),
       album: String(item.Album || '').slice(0, 200), duration: Number(item.Duration) || 0,
       url: String(item.Url || ''), source: String(item.Source || ''), sourceLabel: sourceLabels[item.Source] || String(item.Source || '未知来源'),
       forbidden: Boolean(item.ResourceForbidden)
-    })).filter(item => !item.forbidden && /^https?:\/\//.test(item.url));
-    return [...authorized, ...await this.filterDownloadable(candidates)];
+    }));
+    const available = await this.filterDownloadable(candidates);
+    if (voiceResult.status === 'rejected') warnings.push('网易云声音搜索失败，请稍后重试');
+    const voices = voiceResult.status === 'fulfilled' ? voiceResult.value : [];
+    const items = [...authorized, ...voices, ...available];
+    if (!detailed) return items.filter(item => item.downloadable);
+    return {
+      items, warnings,
+      sources: [...new Set([...(this.neteaseCookie ? ['netease'] : []), ...publicSources, ...(this.sources.includes('netease') ? ['netease-voice'] : [])])].map(source => sourceLabels[source] || source),
+      excludedByTitle: rawItems.length - matches.length,
+      unavailable: items.filter(item => !item.downloadable).length
+    };
   }
 
   async filterDownloadable(candidates) {
-    const results = new Array(candidates.length).fill(null);
+    const results = candidates.map(item => ({ ...item, downloadable: false, unavailableReason: item.forbidden ? '来源标记该资源不可用' : '暂未获取到可用音频地址' }));
     let nextIndex = 0;
     const worker = async () => {
       while (nextIndex < candidates.length) {
         const index = nextIndex++;
         const item = candidates[index];
+        if (item.forbidden || !/^https?:\/\//.test(item.url)) continue;
         try {
           const output = await this.runMediaGet(['-u', item.url, '-m', '--infoFormat=json', '-l', 'silence'], 20000);
           const meta = JSON.parse(output);
           const audios = Array.isArray(meta.audios) ? meta.audios : [];
           const audio = audios.find(candidate => !candidate.not_available && /^https?:\/\//.test(String(candidate.url || '')));
           if (audio && await this.isAudioUrlAvailable(String(audio.url))) {
-            results[index] = { ...item, audioUrl: String(audio.url), coverUrl: /^https?:\/\//.test(String(meta.cover_url || '')) ? meta.cover_url : '' };
+            results[index] = { ...item, downloadable: true, audioUrl: String(audio.url), coverUrl: /^https?:\/\//.test(String(meta.cover_url || '')) ? meta.cover_url : '' };
           }
         } catch {
-          // 单个来源解析失败不影响其他搜索结果，无法确认可下载的结果直接隐藏。
+          results[index].unavailableReason = '来源解析失败或超时，暂时无法下载';
         }
       }
     };
@@ -341,15 +398,18 @@ export class MusicDownloadModule {
     let parsed;
     try { parsed = new URL(url); } catch { throw httpError('下载地址无效'); }
     if (!['http:', 'https:'].includes(parsed.protocol)) throw httpError('下载地址仅支持 HTTP/HTTPS');
+    const programId = input.source === 'netease-voice' ? Number(input.programId) : 0;
+    if (input.source === 'netease-voice' && (!Number.isSafeInteger(programId) || programId <= 0)) throw httpError('网易云声音 ID 无效');
     const title = cleanFilename([input.artist, input.name].filter(Boolean).join(' - '));
     const job = { id: crypto.randomUUID(), type: 'download', title, status: 'queued', error: '', createdAt: new Date().toISOString() };
     this.jobs.set(job.id, job);
     const audioUrl = /^https?:\/\//.test(String(input.audioUrl || '')) ? String(input.audioUrl) : '';
     const neteaseId = input.source === 'netease-auth' && /^\d+$/.test(String(input.neteaseId || '')) ? Number(input.neteaseId) : 0;
     const requestedQuality = neteaseQualities.has(input.requestedQuality) ? input.requestedQuality : 'lossless';
-    this.queue.push({ job, url, audioUrl, neteaseId, requestedQuality, title, song: {
+    this.queue.push({ job, url, audioUrl, neteaseId, programId, requestedQuality, title, song: {
       name: String(input.name || '').slice(0, 200), artist: String(input.artist || '').slice(0, 200),
       album: String(input.album || '').slice(0, 200), duration: Number(input.duration) || 0,
+      uploader: String(input.uploader || '').slice(0, 200), programId,
       source: String(input.source || '').slice(0, 30), sourceLabel: String(input.sourceLabel || '').slice(0, 50), requestedQuality,
       coverUrl: /^https?:\/\//.test(String(input.coverUrl || '')) ? String(input.coverUrl) : ''
     } });
@@ -382,14 +442,16 @@ export class MusicDownloadModule {
     if (!received) throw httpError('音频直链返回了空文件', 502);
   }
 
-  async runDownload({ job, url, audioUrl, neteaseId, requestedQuality, title, song }) {
+  async runDownload({ job, url, audioUrl, neteaseId, programId, requestedQuality, title, song }) {
     job.status = 'running';
-    const tempDir = await import('node:fs/promises').then(fs => fs.mkdtemp(path.join(os.tmpdir(), 'allinone-music-')));
+    let tempDir;
     let extension = '.mp3';
     let resolvedNetease = null;
     try {
-      if (neteaseId) {
-        resolvedNetease = await this.resolveNeteaseSong(neteaseId, requestedQuality);
+      // 临时文件与最终文件同盘，避免跨文件系统重命名失败。
+      tempDir = await mkdtemp(path.join(this.downloadDir, '.allinone-music-'));
+      if (neteaseId || programId) {
+        resolvedNetease = programId ? await this.resolveNeteaseVoice(programId) : await this.resolveNeteaseSong(neteaseId, requestedQuality);
         extension = audioExtensions.has(`.${resolvedNetease.type}`) ? `.${resolvedNetease.type}` : '.mp3';
       }
       const temporary = path.join(tempDir, `${title}${extension}`);
@@ -413,7 +475,9 @@ export class MusicDownloadModule {
       await this.saveCatalog();
     } catch (cause) {
       job.status = 'failed'; job.error = cause.message; job.finishedAt = new Date().toISOString();
-    } finally { await rm(tempDir, { recursive: true, force: true }); }
+    } finally {
+      if (tempDir) await rm(tempDir, { recursive: true, force: true }).catch(cause => console.error('音乐下载临时目录清理失败：', cause.message));
+    }
   }
 
   async saveCatalog() {
@@ -473,6 +537,8 @@ export class MusicDownloadModule {
     return {
       filename, title: tag('title') || catalog.name || path.basename(filename, path.extname(filename)),
       artist: tag('artist') || catalog.artist || '', album: tag('album') || catalog.album || '',
+      lyrics: String(Object.entries(tags).find(([key]) => /^lyrics(?:-|$)/i.test(key))?.[1] || ''),
+      lyricsSupported: ['.mp3', '.flac', '.m4a'].includes(path.extname(filename).toLowerCase()),
       date: tag('date') || tag('year'), genre: tag('genre'), track: tag('track'),
       duration: Number(probe.format?.duration) || catalog.duration || 0, bitrate: Number(probe.format?.bit_rate) || 0,
       codec: audio.codec_name || '', sampleRate: Number(audio.sample_rate) || 0,
@@ -505,6 +571,12 @@ export class MusicDownloadModule {
     if (!(await exists(target))) throw httpError('下载文件不存在', 404);
     const tags = this.validateTags(input);
     if (!tags.title) throw httpError('歌曲名不能为空');
+    const editLyrics = Object.hasOwn(input, 'lyrics');
+    if (editLyrics) {
+      if (typeof input.lyrics !== 'string' || input.lyrics.length > 12000 || input.lyrics.includes('\0')) throw httpError('歌词必须为文本，最多 12000 字且不能包含空字符');
+      if (!['.mp3', '.flac', '.m4a'].includes(path.extname(filename).toLowerCase())) throw httpError('当前仅支持 MP3、FLAC、M4A 内嵌歌词');
+      tags.lyrics = input.lyrics.replace(/\r\n?/g, '\n');
+    }
     let coverUrl = '';
     if (input.scrapeToken) {
       const scraped = this.scrapeTokens.get(String(input.scrapeToken));
@@ -512,22 +584,53 @@ export class MusicDownloadModule {
       coverUrl = scraped.coverUrl;
       this.scrapeTokens.delete(String(input.scrapeToken));
     }
-    const temporaryDir = await import('node:fs/promises').then(fs => fs.mkdtemp(path.join(os.tmpdir(), 'allinone-tags-')));
-    const output = path.join(temporaryDir, `output${path.extname(filename)}`);
+    let temporaryDir;
     try {
+      temporaryDir = await mkdtemp(path.join(path.dirname(target), '.allinone-tags-'));
+      const output = path.join(temporaryDir, `output${path.extname(filename)}`);
       const args = ['-v', 'error', '-y', '-i', target];
       if (coverUrl) args.push('-i', await this.fetchCover(coverUrl, temporaryDir), '-map', '0:a:0', '-map', '1:v:0', '-c', 'copy', '-disposition:v:0', 'attached_pic');
       else args.push('-map', '0', '-c', 'copy', '-map_metadata', '0');
+      if (editLyrics) {
+        const { stdout } = await execFileAsync(process.env.FFPROBE_PATH || 'ffprobe', ['-v', 'error', '-show_format', '-of', 'json', target], { timeout: 15000, maxBuffer: 2 * 1024 * 1024 });
+        for (const key of Object.keys(JSON.parse(stdout).format?.tags || {})) {
+          if (/^lyrics(?:-|$)/i.test(key)) args.push('-metadata', `${key}=`);
+        }
+      }
       for (const [key, value] of Object.entries(tags)) args.push('-metadata', `${key}=${value}`);
       if (path.extname(filename).toLowerCase() === '.mp3') args.push('-id3v2_version', '3');
       args.push(output);
       await execFileAsync(process.env.FFMPEG_PATH || 'ffmpeg', args, { timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+      if (editLyrics) {
+        const { stdout } = await execFileAsync(process.env.FFPROBE_PATH || 'ffprobe', ['-v', 'error', '-show_format', '-of', 'json', output], { timeout: 15000, maxBuffer: 2 * 1024 * 1024 });
+        const saved = Object.entries(JSON.parse(stdout).format?.tags || {}).filter(([key]) => /^lyrics(?:-|$)/i.test(key)).map(([, value]) => String(value));
+        if (tags.lyrics ? !saved.includes(tags.lyrics) : saved.some(Boolean)) throw httpError('当前音频格式未能正确保存歌词，原文件未修改', 502);
+      }
       await rename(output, target);
       this.catalog[filename] = { ...(this.catalog[filename] || {}), name: tags.title, artist: tags.artist, album: tags.album, editedAt: new Date().toISOString() };
       await this.saveCatalog();
       return this.readMetadata(filename);
     } catch (cause) { throw httpError(`写入音频元信息失败：${String(cause.stderr || cause.message).trim().slice(0, 400)}`, 502); }
-    finally { await rm(temporaryDir, { recursive: true, force: true }); }
+    finally {
+      if (temporaryDir) await rm(temporaryDir, { recursive: true, force: true }).catch(cause => console.error('音频元信息临时目录清理失败：', cause.message));
+    }
+  }
+
+  async scrapeLyrics(candidate) {
+    if (!['netease', 'netease-auth', 'netease-voice'].includes(candidate.source)) return { lyrics: '', lyricsMessage: '此来源暂不支持歌词刮削，可手动粘贴' };
+    try {
+      let songId = candidate.neteaseId;
+      if (candidate.source === 'netease-voice') {
+        const detail = await this.neteaseEapi('https://interface3.music.163.com/eapi/dj/program/detail', { id: candidate.programId });
+        songId = detail.program?.mainSong?.id;
+      } else if (!songId) songId = Number(String(candidate.url).match(/[?&]id=(\d+)/)?.[1]);
+      if (!Number.isSafeInteger(songId) || songId <= 0) throw new Error('缺少歌曲 ID');
+      const result = await this.neteaseEapi('https://interface3.music.163.com/eapi/song/lyric', { id: songId, lv: -1, kv: -1, tv: -1, rv: -1 });
+      if (result.code !== 200) throw new Error('歌词接口失败');
+      const lyrics = result.lrc?.lyric || '';
+      if (typeof lyrics !== 'string' || lyrics.length > 12000) return { lyrics: '', lyricsMessage: '歌词过长，未自动填入' };
+      return { lyrics, lyricsMessage: lyrics ? '已获取网易云歌词，选择候选后可编辑' : '来源未提供歌词，保留现有内容' };
+    } catch { return { lyrics: '', lyricsMessage: '歌词获取失败，保留现有内容，可手动粘贴' }; }
   }
 
   async scrape(input) {
@@ -536,7 +639,7 @@ export class MusicDownloadModule {
     const manualArtist = String(input.artist || '').trim().slice(0, 200);
     if (!manualTitle) throw httpError('请先输入歌曲名再刮削');
     const query = [manualTitle, manualArtist].filter(Boolean).join(' ');
-    const candidates = await this.search(query);
+    const { items: candidates } = await this.search(query, 'lossless', { titleOnly: false, detailed: true });
     const normalize = value => String(value || '').toLocaleLowerCase('zh-CN').replace(/[\s·・\-—_()[\]（）【】《》"']/g, '');
     const title = normalize(manualTitle);
     const artist = normalize(manualArtist);
@@ -550,11 +653,11 @@ export class MusicDownloadModule {
     };
     const ranked = candidates.sort((a, b) => score(b) - score(a)).slice(0, 8);
     if (!ranked.length) throw httpError('没有找到可用的刮削结果', 404);
-    return { candidates: ranked.map(candidate => {
+    return { candidates: await Promise.all(ranked.map(async candidate => {
       const token = crypto.randomUUID();
       this.scrapeTokens.set(token, { filename: metadata.filename, coverUrl: candidate.coverUrl || '', expiresAt: Date.now() + 10 * 60 * 1000 });
-      return { ...candidate, token };
-    }) };
+      return { ...candidate, token, ...await this.scrapeLyrics(candidate) };
+    })) };
   }
 
   async moveFiles(input) {
@@ -628,6 +731,43 @@ export class MusicDownloadModule {
     createReadStream(target, { start, end }).pipe(res);
   }
 
+  async renameDownloadedFile(input) {
+    const original = String(input.filename || '');
+    const stem = String(input.name || '').trim();
+    if (original !== path.basename(original) || /[\\/]/.test(original)) throw httpError('文件路径无效');
+    if (!stem || stem.startsWith('.') || /[\\/<>:"|?*\x00-\x1f]/.test(stem) || stem.endsWith('.')) throw httpError('文件名不能为空、以点开头或结尾，也不能包含路径或特殊字符');
+    const { filename, target } = this.resolveDownloadedFile(original);
+    const newName = stem + path.extname(filename);
+    if (Buffer.byteLength(newName, 'utf8') > 255) throw httpError('文件名过长，请缩短名称');
+    const info = await lstat(target).catch(() => null);
+    if (!info?.isFile()) throw httpError('下载文件不存在或不是普通文件', 404);
+    if (newName === filename) return { filename };
+    const destination = path.join(this.downloadDir, newName);
+    // 先建立同盘硬链接，目标存在时原子失败，避免覆盖其他歌曲。
+    try { await link(target, destination); }
+    catch (cause) {
+      if (cause.code === 'EEXIST') throw httpError('已有同名文件，请换一个名称', 409);
+      throw httpError(`重命名失败：${cause.code || '无法创建新文件名'}`, 500);
+    }
+    try { await unlink(target); }
+    catch (cause) {
+      await unlink(destination).catch(error => console.error('重命名回滚失败：', error.message));
+      throw httpError(`重命名失败：${cause.code || '无法移除旧文件名'}`, 500);
+    }
+    if (Object.hasOwn(this.catalog, filename)) {
+      this.catalog[newName] = this.catalog[filename];
+      delete this.catalog[filename];
+    }
+    for (const job of this.jobs.values()) if (job.filename === filename) job.filename = newName;
+    let warning = '';
+    try { await this.saveCatalog(); }
+    catch (cause) {
+      console.error('重命名后保存音乐元数据失败：', cause.message);
+      warning = '文件已重命名，但元数据索引保存失败，请稍后重试保存';
+    }
+    return { filename: newName, warning };
+  }
+
   async deleteDownloadedFile(filenameInput) {
     const { filename, target } = this.resolveDownloadedFile(filenameInput);
     const info = await stat(target).catch(() => null);
@@ -649,9 +789,10 @@ export class MusicDownloadModule {
     if (url.pathname === `${apiPrefix}/netease/session` && req.method === 'DELETE') { await this.logoutNetease(); return json(res, 200, { loggedIn: false }), true; }
     if (url.pathname === `${apiPrefix}/config` && req.method === 'GET') return json(res, 200, { moveRoots: this.moveRoots }), true;
     if (url.pathname === `${apiPrefix}/config` && req.method === 'PUT') return json(res, 200, { moveRoots: await this.updateMoveRoots(await readJson(req)) }), true;
-    if (url.pathname === `${apiPrefix}/search` && req.method === 'GET') return json(res, 200, { items: await this.search(url.searchParams.get('q'), url.searchParams.get('quality') || 'lossless') }), true;
+    if (url.pathname === `${apiPrefix}/search` && req.method === 'GET') return json(res, 200, await this.search(url.searchParams.get('q'), url.searchParams.get('quality') || 'lossless', { detailed: true })), true;
     if (url.pathname === `${apiPrefix}/downloads` && req.method === 'GET') return json(res, 200, { items: await this.listFiles(), jobs: [...this.jobs.values()].slice(-30).reverse() }), true;
     if (url.pathname === `${apiPrefix}/downloads` && req.method === 'POST') return json(res, 202, { job: this.createDownload(await readJson(req)) }), true;
+    if (url.pathname === `${apiPrefix}/downloads/rename` && req.method === 'POST') return json(res, 200, await this.renameDownloadedFile(await readJson(req))), true;
     if (url.pathname === `${apiPrefix}/downloads` && req.method === 'DELETE') return json(res, 200, { deleted: await this.deleteDownloadedFile(url.searchParams.get('file')) }), true;
     if (url.pathname === `${apiPrefix}/audio` && req.method === 'GET') { await this.streamAudio(req, res, url.searchParams.get('file')); return true; }
     if (url.pathname === `${apiPrefix}/move` && req.method === 'POST') return json(res, 200, { moved: await this.moveFiles(await readJson(req)) }), true;
