@@ -2,12 +2,25 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+.env.*
+!.env.example
 .DS_Store
-data/bookmarks.json
-data/favorites.json
-data/xiaoai-music/
-data/xiaoai-assistant/
-data/music-download/
-data/checklist/
-data/beijing-pass/
-data/bill-manager/
+
+# 本机数据、授权状态、报告和备份不入库
+/data/
+/.tmp/
+/reports/
+/.agents/
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# 绑定本机账号、曲库和历史决策的维护工具仅留本地
+/tools/music-genre-*.py
+/tools/music_genre_sources/
